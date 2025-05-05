@@ -1,0 +1,103 @@
+{
+  "conditions": {
+    "CLEAR": {
+      "visibility_range": 150.0,
+      "production_modifier": 1.0,
+      "defense_modifier": 1.0,
+      "movement_speed_modifier": 1.0,
+      "transition_duration": 10.0,
+      "min_duration": 120.0,
+      "max_duration": 400.0,
+      "particle_system": null,
+      "sound_effect": null
+    },
+    "CLOUDY": {
+      "visibility_range": 120.0,
+      "production_modifier": 0.95,
+      "defense_modifier": 1.0,
+      "movement_speed_modifier": 1.0,
+      "transition_duration": 8.0,
+      "min_duration": 90.0,
+      "max_duration": 300.0,
+      "particle_system": "cloud_particles",
+      "sound_effect": "wind_light"
+    },
+    "RAINY": {
+      "visibility_range": 80.0,
+      "production_modifier": 0.85,
+      "defense_modifier": 1.05,
+      "movement_speed_modifier": 0.9,
+      "transition_duration": 15.0,
+      "min_duration": 100.0,
+      "max_duration": 350.0,
+      "particle_system": "rain_particles",
+      "sound_effect": "rain_medium"
+    },
+    "STORMY": {
+      "visibility_range": 60.0,
+      "production_modifier": 0.7,
+      "defense_modifier": 1.15,
+      "movement_speed_modifier": 0.8,
+      "transition_duration": 20.0,
+      "min_duration": 80.0,
+      "max_duration": 250.0,
+      "particle_system": "storm_particles",
+      "sound_effect": "storm_heavy"
+    },
+    "FOGGY": {
+      "visibility_range": 40.0,
+      "production_modifier": 0.9,
+      "defense_modifier": 1.1,
+      "movement_speed_modifier": 0.95,
+      "transition_duration": 25.0,
+      "min_duration": 150.0,
+      "max_duration": 450.0,
+      "particle_system": "fog_particles",
+      "sound_effect": "wind_eerie"
+    },
+    "SNOWY": {
+      "visibility_range": 70.0,
+      "production_modifier": 0.8,
+      "defense_modifier": 1.1,
+      "movement_speed_modifier": 0.85,
+      "transition_duration": 18.0,
+      "min_duration": 110.0,
+      "max_duration": 380.0,
+      "particle_system": "snow_particles",
+      "sound_effect": "snow_wind"
+    }
+  },
+  "transitions": {
+    "CLEAR": {
+      "CLOUDY": 0.6,
+      "RAINY": 0.2,
+      "FOGGY": 0.2
+    },
+    "CLOUDY": {
+      "CLEAR": 0.4,
+      "RAINY": 0.3,
+      "FOGGY": 0.2,
+      "SNOWY": 0.1
+    },
+    "RAINY": {
+      "CLEAR": 0.3,
+      "CLOUDY": 0.4,
+      "STORMY": 0.2,
+      "FOGGY": 0.1
+    },
+    "STORMY": {
+      "RAINY": 0.7,
+      "CLOUDY": 0.3
+    },
+    "FOGGY": {
+      "CLEAR": 0.4,
+      "CLOUDY": 0.5,
+      "RAINY": 0.1
+    },
+    "SNOWY": {
+      "CLEAR": 0.2,
+      "CLOUDY": 0.6,
+      "RAINY": 0.2
+    }
+  }
+}

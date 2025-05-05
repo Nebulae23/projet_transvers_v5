@@ -1,0 +1,32 @@
+{
+    "sprites": {
+        "player": {
+            "path": "sprites/player.png",
+            "width": 32,
+            "height": 32,
+            "anchor": {"x": 0.5, "y": 0.5}
+        },
+        "enemy": {
+            "path": "sprites/enemy.png",
+            "width": 32,
+            "height": 32,
+            "anchor": {"x": 0.5, "y": 0.5}
+        }
+    },
+    "ui": {
+        "button": {
+            "path": "ui/button.png",
+            "width": 200,
+            "height": 50,
+            "anchor": {"x": 0.5, "y": 0.5}
+        }
+    },
+    "backgrounds": {
+        "demo": {
+            "path": "backgrounds/demo_bg.png",
+            "width": 800,
+            "height": 600,
+            "anchor": {"x": 0.0, "y": 0.0}
+        }
+    }
+}

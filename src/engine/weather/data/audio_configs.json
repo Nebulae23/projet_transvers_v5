@@ -1,0 +1,47 @@
+{
+  "clear": {
+    "ambient": {
+      "file": "assets/audio/ambient/birds_day.ogg",
+      "volume": 0.7,
+      "fade_duration": 3.0
+    }
+  },
+  "cloudy": {
+    "ambient": {
+      "file": "assets/audio/ambient/wind_light.ogg",
+      "volume": 0.5,
+      "fade_duration": 4.0
+    }
+  },
+  "rain": {
+    "ambient": {
+      "file": "assets/audio/ambient/rain_medium.ogg",
+      "volume": 0.8,
+      "fade_duration": 2.0
+    },
+    "one_shots": {
+      "thunder_close": {
+        "file": "assets/audio/sfx/thunder_close.ogg",
+        "volume": 1.0
+      },
+      "thunder_far": {
+        "file": "assets/audio/sfx/thunder_far.ogg",
+        "volume": 0.6
+      }
+    }
+  },
+  "snow": {
+    "ambient": {
+      "file": "assets/audio/ambient/wind_snow.ogg",
+      "volume": 0.6,
+      "fade_duration": 5.0
+    }
+  },
+  "fog": {
+    "ambient": {
+      "file": "assets/audio/ambient/fog_eerie.ogg",
+      "volume": 0.4,
+      "fade_duration": 6.0
+    }
+  }
+}

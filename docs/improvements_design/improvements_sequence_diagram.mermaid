@@ -1,0 +1,60 @@
+sequenceDiagram
+    participant GM as GameManager
+    participant CSM as ClassSkillManager
+    participant SG as SkillGenerator
+    participant MC as MenuCamera
+    participant WR as WorldRenderer
+    participant TG as TerrainGenerator
+    participant ES as EffectSystem
+
+    %% Procedural Skill Generation
+    Note over GM,SG: Skill Generation Flow
+    GM->>CSM: checkProceduralSkillUnlock(paragonLevel)
+    CSM->>SG: generateSkill(classType, paragonLevel)
+    SG->>SG: selectTemplate()
+    SG->>SG: applyModifiers()
+    SG-->>CSM: return newSkill
+    CSM->>CSM: validateAndStore(newSkill)
+
+    %% Menu Camera System
+    Note over GM,ES: Menu Camera Flow
+    GM->>MC: initializeMenu()
+    MC->>TG: generateMenuWorld(seed)
+    TG->>WR: setupWorld(terrain)
+    loop Every Frame
+        MC->>MC: updateCamera(deltaTime)
+        MC->>WR: render(camera)
+        WR->>ES: updateEffects(deltaTime)
+    end
+
+    %% Special Event Flow
+    Note over GM,ES: Special Event Flow
+    GM->>WR: triggerSpecialEvent(eventType)
+    WR->>ES: spawnEffect(eventType)
+    WR->>MC: focusOnEvent(position)
+    MC->>MC: transitionCamera(target)
+    loop Event Duration
+        ES->>ES: updateParticles(deltaTime)
+        WR->>WR: updateLighting(deltaTime)
+    end
+
+    %% World Generation Flow
+    Note over GM,TG: World Generation Flow
+    GM->>TG: generateWorld(seed)
+    TG->>TG: createHeightMap()
+    TG->>TG: generateBiomes()
+    TG->>TG: placeLandmarks()
+    TG->>WR: updateWorld(terrain)
+    WR->>WR: setupWaterSystem()
+    WR->>WR: setupSkySystem()
+    WR->>ES: initializeAmbientEffects()
+
+    %% Visual Update Flow
+    Note over WR,ES: Visual Pipeline Flow
+    loop Every Frame
+        WR->>WR: updateWaterReflections()
+        WR->>WR: updateClouds(deltaTime)
+        WR->>WR: updateAtmosphere()
+        WR->>ES: updateParticleSystems()
+        WR->>WR: renderScene(camera)
+    end

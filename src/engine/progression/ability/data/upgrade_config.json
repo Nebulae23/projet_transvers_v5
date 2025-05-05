@@ -1,0 +1,302 @@
+{
+  "AxeSlash": {
+    "axe_slash_damage_1": {
+      "cost": 100,
+      "level_req": 1,
+      "modifier": {"damage_multiplier": 1.10},
+      "name": "Increased Damage I",
+      "description": "Increases AxeSlash damage by 10%."
+    },
+    "axe_slash_arc": {
+      "cost": 200,
+      "level_req": 3,
+      "modifier": {"aoe_radius_multiplier": 1.25},
+      "prerequisites": ["axe_slash_damage_1"],
+      "name": "Wider Arc",
+      "description": "Increases the area of effect of AxeSlash."
+    },
+    "axe_slash_damage_2": {
+      "cost": 250,
+      "level_req": 3,
+      "modifier": {"damage_multiplier": 1.15},
+      "prerequisites": ["axe_slash_damage_1"],
+      "name": "Increased Damage II",
+      "description": "Further increases AxeSlash damage by 15%."
+    },
+    "axe_slash_stun": {
+      "cost": 400,
+      "level_req": 5,
+      "modifier": {"status_effect": {"type": "stun", "chance": 0.25, "duration": 1.0}},
+      "prerequisites": ["axe_slash_arc"],
+      "name": "Stunning Blow",
+      "description": "Adds a chance to stun enemies hit by AxeSlash."
+    },
+    "axe_slash_damage_3": {
+      "cost": 500,
+      "level_req": 5,
+      "modifier": {"damage_multiplier": 1.25},
+      "prerequisites": ["axe_slash_damage_2"],
+      "name": "Devastating Strike",
+      "description": "Massively increases AxeSlash damage by 25%."
+    }
+  },
+  "MagicBolt": {
+    "magic_bolt_efficiency": {
+      "cost": 100,
+      "level_req": 1,
+      "modifier": {"mana_cost_multiplier": 0.85},
+      "name": "Mana Efficiency",
+      "description": "Reduces the mana cost of MagicBolt by 15%."
+    },
+    "magic_bolt_multi_shot": {
+      "cost": 250,
+      "level_req": 3,
+      "modifier": {"projectile_count": 2},
+      "prerequisites": ["magic_bolt_efficiency"],
+      "name": "Multi-Shot",
+      "description": "MagicBolt fires an additional projectile."
+    },
+    "magic_bolt_elemental_fire": {
+      "cost": 200,
+      "level_req": 3,
+      "modifier": {"elemental_damage": {"type": "fire", "amount": 10}},
+      "prerequisites": ["magic_bolt_efficiency"],
+      "name": "Fire Attunement",
+      "description": "MagicBolt now deals additional Fire damage."
+    },
+    "magic_bolt_penetration": {
+      "cost": 400,
+      "level_req": 5,
+      "modifier": {"penetration_count": 1},
+      "prerequisites": ["magic_bolt_multi_shot"],
+      "name": "Piercing Bolt",
+      "description": "MagicBolt can now pierce through one additional target."
+    },
+    "magic_bolt_enhanced_fire": {
+      "cost": 350,
+      "level_req": 5,
+      "modifier": {"elemental_damage": {"type": "fire", "amount": 20}},
+      "prerequisites": ["magic_bolt_elemental_fire"],
+      "name": "Intensified Flames",
+      "description": "Increases the Fire damage of MagicBolt."
+    },
+    "magic_bolt_triple_shot": {
+      "cost": 500,
+      "level_req": 5,
+      "modifier": {"projectile_count": 3},
+      "prerequisites": ["magic_bolt_multi_shot"],
+      "name": "Triple Shot",
+      "description": "MagicBolt fires two additional projectiles."
+    }
+  },
+  "HolyLight": {
+    "holy_light_potency_1": {
+      "cost": 120,
+      "level_req": 1,
+      "modifier": {"heal_amount_multiplier": 1.15},
+      "name": "Enhanced Healing I",
+      "description": "Increases the amount healed by Holy Light by 15%."
+    },
+    "holy_light_aoe": {
+      "cost": 220,
+      "level_req": 3,
+      "modifier": {"heal_aoe_radius": 5.0},
+      "prerequisites": ["holy_light_potency_1"],
+      "name": "Healing Aura",
+      "description": "Holy Light now heals allies in a small area around the target."
+    },
+    "holy_light_potency_2": {
+      "cost": 280,
+      "level_req": 3,
+      "modifier": {"heal_amount_multiplier": 1.20},
+      "prerequisites": ["holy_light_potency_1"],
+      "name": "Enhanced Healing II",
+      "description": "Further increases the amount healed by Holy Light by 20%."
+    },
+    "holy_light_protection": {
+      "cost": 450,
+      "level_req": 5,
+      "modifier": {"buff_on_heal": {"type": "defense_boost", "duration": 5.0, "value": 0.10}},
+      "prerequisites": ["holy_light_aoe"],
+      "name": "Protective Ward",
+      "description": "Allies healed by Holy Light gain a temporary defensive buff."
+    },
+    "holy_light_large_aoe": {
+        "cost": 400,
+        "level_req": 5,
+        "modifier": {"heal_aoe_radius": 10.0},
+        "prerequisites": ["holy_light_aoe"],
+        "name": "Expansive Aura",
+        "description": "Significantly increases the area of the Healing Aura."
+    },
+    "holy_light_potency_3": {
+        "cost": 550,
+        "level_req": 5,
+        "modifier": {"heal_amount_multiplier": 1.30},
+        "prerequisites": ["holy_light_potency_2"],
+        "name": "Divine Intervention",
+        "description": "Massively increases the healing potency of Holy Light by 30%."
+    }
+  },
+  "Turret": {
+    "turret_duration_1": {
+      "cost": 100,
+      "level_req": 1,
+      "modifier": {"duration_multiplier": 1.20},
+      "name": "Extended Deployment I",
+      "description": "Increases the duration turrets stay active by 20%."
+    },
+    "turret_fire_rate_1": {
+      "cost": 200,
+      "level_req": 3,
+      "modifier": {"fire_rate_multiplier": 1.15},
+      "prerequisites": ["turret_duration_1"],
+      "name": "Rapid Fire I",
+      "description": "Increases turret fire rate by 15%."
+    },
+    "turret_count_2": {
+      "cost": 300,
+      "level_req": 4,
+      "modifier": {"max_turrets": 2},
+      "prerequisites": ["turret_duration_1"],
+      "name": "Additional Unit",
+      "description": "Allows deployment of a second turret simultaneously."
+    },
+    "turret_status_poison": {
+      "cost": 400,
+      "level_req": 5,
+      "modifier": {"status_effect_on_hit": {"type": "poison", "chance": 0.20, "duration": 3.0, "dps": 5}},
+      "prerequisites": ["turret_fire_rate_1"],
+      "name": "Poison Rounds",
+      "description": "Turret attacks now have a chance to apply poison."
+    },
+    "turret_fire_rate_2": {
+      "cost": 350,
+      "level_req": 5,
+      "modifier": {"fire_rate_multiplier": 1.20},
+      "prerequisites": ["turret_fire_rate_1"],
+      "name": "Rapid Fire II",
+      "description": "Further increases turret fire rate by 20%."
+    },
+    "turret_count_3": {
+      "cost": 550,
+      "level_req": 6,
+      "modifier": {"max_turrets": 3},
+      "prerequisites": ["turret_count_2"],
+      "name": "Reinforced Deployment",
+      "description": "Allows deployment of a third turret simultaneously."
+    }
+  },
+  "Sniping": {
+    "sniping_damage_1": {
+      "cost": 100,
+      "level_req": 1,
+      "modifier": {"damage_multiplier": 1.10},
+      "name": "Precision Shot I",
+      "description": "Increases Sniping base damage by 10%."
+    },
+    "sniping_crit_chance_1": {
+      "cost": 150,
+      "level_req": 2,
+      "modifier": {"crit_chance_bonus": 0.05},
+      "name": "Keen Eye I",
+      "description": "Increases Sniping critical hit chance by 5%."
+    },
+    "sniping_crit_damage": {
+      "cost": 250,
+      "level_req": 3,
+      "modifier": {"crit_damage_multiplier_bonus": 0.25},
+      "prerequisites": ["sniping_crit_chance_1"],
+      "name": "Vital Point Targeting",
+      "description": "Increases Sniping critical hit damage multiplier by 25%."
+    },
+    "sniping_armor_pierce": {
+      "cost": 300,
+      "level_req": 4,
+      "modifier": {"armor_penetration_percentage": 0.20},
+      "prerequisites": ["sniping_damage_1"],
+      "name": "Armor Piercing Rounds",
+      "description": "Sniping shots ignore 20% of enemy armor."
+    },
+    "sniping_guided": {
+      "cost": 500,
+      "level_req": 6,
+      "modifier": {"homing_strength": 0.1},
+      "prerequisites": ["sniping_crit_damage"],
+      "name": "Guided Shot",
+      "description": "Sniping shots slightly curve towards the target."
+    },
+    "sniping_enhanced_pierce": {
+      "cost": 450,
+      "level_req": 6,
+      "modifier": {"armor_penetration_percentage": 0.40},
+      "prerequisites": ["sniping_armor_pierce"],
+      "name": "Enhanced Armor Piercing",
+      "description": "Sniping shots now ignore 40% of enemy armor."
+    },
+    "sniping_crit_chance_2": {
+      "cost": 400,
+      "level_req": 5,
+      "modifier": {"crit_chance_bonus": 0.10},
+      "prerequisites": ["sniping_crit_chance_1"],
+      "name": "Keen Eye II",
+      "description": "Further increases Sniping critical hit chance by 10%."
+    }
+  },
+  "SpiritSummon": {
+    "spirit_duration_1": {
+      "cost": 100,
+      "level_req": 1,
+      "modifier": {"summon_duration_multiplier": 1.20},
+      "name": "Lingering Essence I",
+      "description": "Increases the duration summoned spirits remain active by 20%."
+    },
+    "spirit_health_1": {
+      "cost": 120,
+      "level_req": 1,
+      "modifier": {"summon_health_multiplier": 1.15},
+      "name": "Resilient Spirits I",
+      "description": "Increases the health of summoned spirits by 15%."
+    },
+    "spirit_count_2": {
+      "cost": 300,
+      "level_req": 3,
+      "modifier": {"max_summons": 2},
+      "prerequisites": ["spirit_duration_1"],
+      "name": "Twin Souls",
+      "description": "Allows summoning a second spirit simultaneously."
+    },
+    "spirit_strength_1": {
+      "cost": 250,
+      "level_req": 3,
+      "modifier": {"summon_damage_multiplier": 1.20},
+      "prerequisites": ["spirit_health_1"],
+      "name": "Empowered Spirits I",
+      "description": "Increases the damage dealt by summoned spirits by 20%."
+    },
+    "spirit_strength_2": {
+      "cost": 450,
+      "level_req": 5,
+      "modifier": {"summon_damage_multiplier": 1.25},
+      "prerequisites": ["spirit_strength_1"],
+      "name": "Empowered Spirits II",
+      "description": "Further increases the damage dealt by summoned spirits by 25%."
+    },
+    "spirit_duration_2": {
+      "cost": 400,
+      "level_req": 5,
+      "modifier": {"summon_duration_multiplier": 1.30},
+      "prerequisites": ["spirit_duration_1"],
+      "name": "Lingering Essence II",
+      "description": "Further increases the duration summoned spirits remain active by 30%."
+    },
+    "spirit_count_3": {
+      "cost": 600,
+      "level_req": 6,
+      "modifier": {"max_summons": 3},
+      "prerequisites": ["spirit_count_2"],
+      "name": "Spirit Horde",
+      "description": "Allows summoning a third spirit simultaneously."
+    }
+  }
+}

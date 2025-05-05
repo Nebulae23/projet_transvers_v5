@@ -1,0 +1,66 @@
+classDiagram
+    class RenderEngine {
+        -shaderManager: ShaderManager
+        -materialSystem: MaterialSystem
+        -lightingSystem: LightingSystem
+        -postProcessor: PostProcessor
+        -particleSystem: ParticleSystem
+        +initialize()
+        +render(scene: Scene)
+        +updateSettings(settings: RenderSettings)
+    }
+
+    class ShaderManager {
+        -shaderPrograms: Map<string, ShaderProgram>
+        +loadShader(name: string, vertPath: string, fragPath: string)
+        +useShader(name: string)
+        +setUniform(name: string, value: any)
+    }
+
+    class MaterialSystem {
+        -materials: Map<string, Material>
+        -textureCache: TextureCache
+        +createMaterial(params: MaterialParams)
+        +bindMaterial(material: Material)
+        +updateMaterial(material: Material)
+    }
+
+    class LightingSystem {
+        -lights: Light[]
+        -shadowMaps: Map<Light, ShadowMap>
+        +addLight(light: Light)
+        +updateLights()
+        +renderShadowMaps()
+    }
+
+    class PostProcessor {
+        -effects: PostEffect[]
+        -framebuffers: Framebuffer[]
+        +addEffect(effect: PostEffect)
+        +process(inputTexture: Texture)
+        +updateEffectSettings(settings: PostProcessSettings)
+    }
+
+    class ParticleSystem {
+        -particlePool: ParticlePool
+        -emitters: ParticleEmitter[]
+        +emit(params: ParticleParams)
+        +update(deltaTime: float)
+        +render()
+    }
+
+    class Scene {
+        -entities: Entity[]
+        -camera: Camera
+        -environment: Environment
+        +update(deltaTime: float)
+        +addEntity(entity: Entity)
+        +removeEntity(entity: Entity)
+    }
+
+    RenderEngine --> ShaderManager
+    RenderEngine --> MaterialSystem
+    RenderEngine --> LightingSystem
+    RenderEngine --> PostProcessor
+    RenderEngine --> ParticleSystem
+    RenderEngine --> Scene

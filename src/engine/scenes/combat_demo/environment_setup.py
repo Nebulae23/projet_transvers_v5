@@ -1,0 +1,1 @@
+# Configuration de l'arène pour la démo de combat
