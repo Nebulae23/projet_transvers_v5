@@ -57,7 +57,9 @@ class OptionsMenu:
             text="OPTIONS",
             font_size=36,
             color=(255, 255, 255),
-            centered=True
+            centered=True,
+            width=150,  # Providing explicit width
+            height=40   # Providing explicit height
         )
         self.labels.append(self.title_label)
         self.ui_elements.append(self.title_label)
@@ -75,7 +77,9 @@ class OptionsMenu:
             y=content_y,
             text="Music Volume",
             font_size=24,
-            color=(220, 220, 220)
+            color=(220, 220, 220),
+            width=200,  # Add explicit width
+            height=30   # Add explicit height
         )
         self.labels.append(self.music_label)
         self.ui_elements.append(self.music_label)
@@ -98,7 +102,9 @@ class OptionsMenu:
             y=content_y + content_spacing,
             text="SFX Volume",
             font_size=24,
-            color=(220, 220, 220)
+            color=(220, 220, 220),
+            width=200,  # Add explicit width
+            height=30   # Add explicit height
         )
         self.labels.append(self.sfx_label)
         self.ui_elements.append(self.sfx_label)

@@ -24,14 +24,15 @@ class MenuItem:
     hover: bool = False
 
 class MenuSystem:
-    def __init__(self, window_size: tuple[int, int]):
+    def __init__(self, window_size: tuple[int, int], renderer=None):
         self.window_size = window_size
         self.current_state = MenuState.MAIN
         self.transition_alpha = 0.0
+        self.renderer = renderer  # Store reference to main renderer
         
         # Initialize rendering systems
         self.camera = MenuCamera()
-        self.world_renderer = WorldRenderer(window_size)
+        self.world_renderer = WorldRenderer(window_size, self.renderer)
         self.terrain_gen = TerrainGenerator()
         
         # Generate showcase world

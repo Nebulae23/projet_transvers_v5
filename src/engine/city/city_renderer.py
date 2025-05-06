@@ -2,8 +2,9 @@
 from typing import List
 import numpy as np
 from OpenGL.GL import *
-from ..engine.renderer import ShaderPipeline
-from ..engine.core import OpenGLContext
+import pygame
+from ..rendering.shader_manager import ShaderManager
+from ..core import OpenGLContext
 from .district import District
 from .building import Building
 from .defense import DefenseTower
@@ -11,14 +12,15 @@ from .defense import DefenseTower
 class CityRenderer:
     def __init__(self, gl_context: OpenGLContext):
         self.gl_context = gl_context
-        self.shader_pipeline = ShaderPipeline()
+        self.shader_manager = ShaderManager()  # Use ShaderManager instead of ShaderPipeline
         self.initialize_shaders()
         
     def initialize_shaders(self):
         # Setup HD-2D specific shaders
-        self.geometry_pass = self.shader_pipeline.stages['geometry']
-        self.lighting_pass = self.shader_pipeline.stages['lighting']
-        self.post_pass = self.shader_pipeline.stages['post']
+        # Load shaders using the shader manager
+        self.geometry_program = self.shader_manager.load_shader_program('geometry', 'geometry.vert', 'geometry.frag')
+        self.lighting_program = self.shader_manager.load_shader_program('lighting', 'lighting.vert', 'lighting.frag')
+        self.post_program = self.shader_manager.load_shader_program('post', 'post.vert', 'post.frag')
         
         # Initialize framebuffers for deferred rendering
         self.g_buffer = self._create_g_buffer()
@@ -66,13 +68,13 @@ class CityRenderer:
         glBindFramebuffer(GL_FRAMEBUFFER, self.g_buffer['fbo'])
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         
-        self.geometry_pass.use()
+        self.shader_manager.use_program('geometry')
         for district in districts:
             self._render_district(district)
             
         # Lighting Pass
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
-        self.lighting_pass.use()
+        self.shader_manager.use_program('lighting')
         
         # Bind G-buffer textures
         glActiveTexture(GL_TEXTURE0)
@@ -86,21 +88,21 @@ class CityRenderer:
         self._render_fullscreen_quad()
         
         # Post-processing
-        self.post_pass.use()
+        self.shader_manager.use_program('post')
         self._apply_post_processing()
         
     def _render_district(self, district: District):
-        self.geometry_pass.set_uniform("model_matrix", district._get_transform_matrix())
+        self.shader_manager.set_uniform('geometry', "model_matrix", district._get_transform_matrix())
         self.gl_context.draw_mesh(district.mesh)
         
         for building in district.buildings:
             self._render_building(building)
             
     def _render_building(self, building: Building):
-        self.geometry_pass.set_uniform("model_matrix", building._get_transform_matrix())
-        self.geometry_pass.set_uniform("material.albedo_map", building.material['albedo_map'])
-        self.geometry_pass.set_uniform("material.normal_map", building.material['normal_map'])
-        self.geometry_pass.set_uniform("material.roughness_map", building.material['roughness_map'])
+        self.shader_manager.set_uniform('geometry', "model_matrix", building._get_transform_matrix())
+        self.shader_manager.set_uniform('geometry', "material.albedo_map", building.material['albedo_map'])
+        self.shader_manager.set_uniform('geometry', "material.normal_map", building.material['normal_map'])
+        self.shader_manager.set_uniform('geometry', "material.roughness_map", building.material['roughness_map'])
         self.gl_context.draw_mesh(building.mesh)
         
     def _render_fullscreen_quad(self):
@@ -116,6 +118,6 @@ class CityRenderer:
         
     def _apply_post_processing(self):
         # Apply HD-2D specific post-processing effects
-        self.post_pass.set_uniform("dof_enabled", 1)
-        self.post_pass.set_uniform("bloom_threshold", 1.0)
+        self.shader_manager.set_uniform('post', "dof_enabled", 1)
+        self.shader_manager.set_uniform('post', "bloom_threshold", 1.0)
         self._render_fullscreen_quad()

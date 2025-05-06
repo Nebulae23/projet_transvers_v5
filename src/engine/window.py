@@ -1,10 +1,25 @@
 # src/engine/window.py
 import pygame
 
+# Try to import OpenGL
+try:
+    from OpenGL.GL import *
+    OPENGL_AVAILABLE = True
+except ImportError:
+    OPENGL_AVAILABLE = False
+    print("OpenGL not available for Window class")
+
 class Window:
-    def __init__(self, width=1280, height=720, title="Game Window", fullscreen=False):
+    def __init__(self, width=1280, height=720, title="Game Window", fullscreen=False, use_opengl=True):
         """
         Initialize pygame window
+        
+        Args:
+            width (int): Window width
+            height (int): Window height
+            title (str): Window title
+            fullscreen (bool): Whether to start in fullscreen mode
+            use_opengl (bool): Whether to initialize with OpenGL support
         """
         pygame.init()
         
@@ -13,18 +28,48 @@ class Window:
         self.title = title
         self.fullscreen = fullscreen
         
-        # Set up the display
+        # Set OpenGL attributes if requested and available
+        self.using_opengl = use_opengl and OPENGL_AVAILABLE
+        
+        if self.using_opengl:
+            print("Setting up OpenGL window...")
+            # Set up OpenGL context attributes
+            pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MAJOR_VERSION, 3)
+            pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MINOR_VERSION, 3)
+            pygame.display.gl_set_attribute(pygame.GL_CONTEXT_PROFILE_MASK, pygame.GL_CONTEXT_PROFILE_CORE)
+            pygame.display.gl_set_attribute(pygame.GL_CONTEXT_FORWARD_COMPATIBLE_FLAG, 1)
+        
+        # Set up the display with appropriate flags
         flags = 0
         if fullscreen:
-            flags = pygame.FULLSCREEN
+            flags |= pygame.FULLSCREEN
+        if self.using_opengl:
+            flags |= pygame.OPENGL | pygame.DOUBLEBUF
         
-        self.screen = pygame.display.set_mode((width, height), flags)
-        pygame.display.set_caption(title)
+        try:
+            self.screen = pygame.display.set_mode((width, height), flags)
+            mode_str = 'OpenGL' if self.using_opengl else 'software rendering'
+            print(f"Window created ({width}x{height}, {'fullscreen' if fullscreen else 'windowed'}, {mode_str})")
+        except pygame.error as e:
+            print(f"Error creating window: {e}")
+            # Fallback to software rendering if OpenGL fails
+            if self.using_opengl:
+                print("Falling back to software rendering")
+                self.using_opengl = False
+                flags &= ~(pygame.OPENGL | pygame.DOUBLEBUF)
+                self.screen = pygame.display.set_mode((width, height), flags)
         
         # Set up clock for timing
         self.clock = pygame.time.Clock()
+    
+    def is_using_opengl(self):
+        """
+        Check if window is using OpenGL
         
-        print(f"Window created ({width}x{height}, {'fullscreen' if fullscreen else 'windowed'})")
+        Returns:
+            bool: True if using OpenGL, False otherwise
+        """
+        return self.using_opengl
     
     def get_screen(self):
         """
@@ -51,6 +96,9 @@ class Window:
         """
         self.fullscreen = not self.fullscreen
         flags = pygame.FULLSCREEN if self.fullscreen else 0
+        if self.using_opengl:
+            flags |= pygame.OPENGL | pygame.DOUBLEBUF
+        
         self.screen = pygame.display.set_mode((self.width, self.height), flags)
         print(f"Toggled to {'fullscreen' if self.fullscreen else 'windowed'} mode")
         
@@ -58,7 +106,9 @@ class Window:
         """
         Clear the screen with the given color
         """
-        self.screen.fill(color)
+        if not self.using_opengl:
+            self.screen.fill(color)
+        # Note: OpenGL clearing is handled by the renderer/OpenGLContext
         
     def swap_buffers(self):
         """

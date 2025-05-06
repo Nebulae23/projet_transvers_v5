@@ -13,6 +13,7 @@ Affiche les statistiques détaillées, l'équipement actuel et la progression.
 # from ...progression.stats import Stats
 # from ...inventory.inventory import Inventory # Pour l'équipement
 
+
 class CharacterSheet: # Remplacer par UIBase ou classe de base appropriée
     def __init__(self, player_stats: 'Stats', player_inventory: 'Inventory'):
         # super().__init__() # Appel au constructeur parent si nécessaire

@@ -19,6 +19,7 @@ try:
     from . import inventory
     from . import time
     from . import rendering
+    # Note: There is no 'engine' submodule, so don't try to import it
 except ImportError as e:
     # Don't fail on import, just note which modules aren't available
     # This allows partial functionality even if some modules are missing

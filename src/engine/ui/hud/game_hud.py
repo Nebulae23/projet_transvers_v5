@@ -572,8 +572,12 @@ class GameHUD:
             
         # Check if any UI element handled the event
         for element in self.ui_elements:
-            if hasattr(element, 'handle_event') and element.handle_event(event):
-                return True
+            try:
+                if hasattr(element, 'handle_event') and element.handle_event(event):
+                    return True
+            except AttributeError:
+                # Handle case where event is missing expected attributes
+                continue
                 
         return False
         

@@ -3,7 +3,7 @@ from typing import Dict, Tuple, List
 import noise
 import numpy as np
 from OpenGL.GL import *
-from ..engine.renderer import ShaderPipeline
+from ..rendering.shader_manager import ShaderManager
 
 class TerrainChunk:
     def __init__(self, position: Tuple[int, int], size: int = 32):
@@ -92,7 +92,10 @@ class TerrainGenerator:
     def __init__(self):
         self.chunks: Dict[Tuple[int, int], TerrainChunk] = {}
         self.seed = np.random.randint(0, 1000000)
-        self.shader = ShaderPipeline().stages['terrain']
+        # Initialize shader manager
+        self.shader_manager = ShaderManager()
+        # Load terrain shader
+        self.shader_manager.load_shader_program('terrain', 'terrain.vert', 'terrain.frag')
         
     def get_chunk(self, chunk_pos: Tuple[int, int]) -> TerrainChunk:
         if chunk_pos not in self.chunks:

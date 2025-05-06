@@ -60,7 +60,9 @@ class PauseMenu:
             text="Game Paused",
             font_size=36,
             color=(255, 255, 255),
-            centered=True
+            centered=True,
+            width=200,
+            height=40
         )
         
         # Create buttons

@@ -77,15 +77,17 @@ class WorldRenderer:
     """
     Renderer for the 3D world environment with HD-2D style graphics.
     """
-    def __init__(self, resolution: Tuple[int, int]):
+    def __init__(self, resolution: Tuple[int, int], renderer=None):
         """
         Initialize the world renderer.
         
         Args:
             resolution (Tuple[int, int]): The rendering resolution (width, height).
+            renderer: The main renderer object with OpenGL context info
         """
         self.width, self.height = resolution
         self.hd2d_renderer = None
+        self.renderer = renderer  # Store reference to main renderer
         
         # Camera settings
         self.camera_position = np.array([0.0, 10.0, 10.0], dtype=float)  # Position behind and above player
@@ -114,11 +116,6 @@ class WorldRenderer:
         # Create a fallback surface for software rendering
         self.fallback_surface = pygame.Surface(resolution)
         
-        # Initialize subsystems
-        self.water_system = WaterSystem(resolution)
-        self.sky_system = SkySystem()
-        self.effect_system = EffectSystem()
-        
         # Render targets and post-processing
         self.using_framebuffers = False
         self.main_fbo = 0
@@ -126,6 +123,12 @@ class WorldRenderer:
         
         # Try to initialize framebuffers if OpenGL is available
         self._init_framebuffers(resolution)
+        
+        # Initialize subsystems
+        # Pass renderer to subsystems for feature detection
+        self.water_system = WaterSystem(resolution, self.renderer)
+        self.sky_system = SkySystem(self.renderer)
+        self.effect_system = EffectSystem()
         
         # Post-processing parameters
         self.bloom_intensity = 0.3

@@ -2,6 +2,18 @@
 import pygame
 import math
 
+# Import UIEvent/UIEventType from ui_base
+from .ui_base import UIEvent, UIEventType, get_ui_renderer
+
+# Try to import OpenGL
+try:
+    from OpenGL.GL import *
+    import glm
+    OPENGL_AVAILABLE = True
+except ImportError:
+    OPENGL_AVAILABLE = False
+    print("OpenGL not available for MenuManager, using fallback rendering")
+
 # Our simple MainMenu implementation is already in this file
 # No need to import it from elsewhere
 
@@ -24,6 +36,11 @@ class MenuManager:
         self.game = game_instance
         self.menu_stack = []  # Pile pour gérer les menus ouverts (ex: Pause par-dessus Jeu)
         self.current_transition = None # Pour gérer les animations de transition
+        self.screen_width = 0
+        self.screen_height = 0
+        
+        # Debug flag
+        self.debug = False
 
         # Initialiser avec le menu principal si nécessaire (ou laisser le jeu le faire)
         # self.push_menu(MainMenu(self))
@@ -96,7 +113,7 @@ class MenuManager:
         if event.type == pygame.KEYDOWN:
             # --- Menu Pause (Echap) ---
             if event.key == pygame.K_ESCAPE:
-                if self.game and self.game.is_in_gameplay(): # Vérifier si on est en jeu
+                if self.game and hasattr(self.game, 'is_in_gameplay') and self.game.is_in_gameplay(): # Vérifier si on est en jeu
                     active_menu = self.get_active_menu()
                     # Commented out to avoid import issues
                     # if isinstance(active_menu, PauseMenu):
@@ -161,8 +178,19 @@ class MenuManager:
 
     def draw(self, screen):
         """Dessine le menu actif."""
-        # TODO: Gérer le dessin pendant les transitions
-
+        # Update screen dimensions for the renderer
+        self.screen_width, self.screen_height = screen.get_size()
+        
+        # Get UI renderer
+        renderer = get_ui_renderer(self.screen_width, self.screen_height)
+        
+        # Check if we're using OpenGL rendering
+        using_opengl = OPENGL_AVAILABLE and renderer is not None
+        
+        if self.debug:
+            print(f"MenuManager draw - using OpenGL: {using_opengl}")
+            
+        # Draw the active menu
         active_menu = self.get_active_menu()
         if active_menu and hasattr(active_menu, 'draw'):
             active_menu.draw(screen)
@@ -211,11 +239,22 @@ class MainMenu:
         self.title_rect = self.title_render.get_rect(center=(width // 2, height // 4))
         self.title_shadow_rect = self.title_shadow.get_rect(center=(width // 2 + 3, height // 4 + 3))
         
+        # Initialize textures for OpenGL rendering
+        self.bg_texture = 0
+        self.title_texture = 0
+        self.button_textures = []
+        
         # Try to load background image
         self.bg_image = None
         try:
             self.bg_image = pygame.image.load("assets/backgrounds/demo_bg.png").convert_alpha()
             self.bg_image = pygame.transform.scale(self.bg_image, (width, height))
+            
+            # Create OpenGL texture if available
+            renderer = get_ui_renderer(width, height)
+            if OPENGL_AVAILABLE and renderer is not None:
+                self.bg_texture = renderer.create_texture_from_surface(self.bg_image)
+                self.title_texture = renderer.create_texture_from_surface(self.title_render)
         except Exception as e:
             print(f"Could not load background image: {e}")
         
@@ -248,136 +287,140 @@ class MainMenu:
                 return True
             # Select item
             elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                selected_item = self.menu_items[self.selected_index]
-                if selected_item['callback']:
-                    selected_item['callback']()
+                callback = self.menu_items[self.selected_index]['callback']
+                if callback:
+                    callback()
                 return True
-                
-        # Handle mouse
-        if event.type == pygame.MOUSEMOTION:
-            # Check if mouse is over any menu item
-            mouse_pos = pygame.mouse.get_pos()
-            for i, item in enumerate(self.menu_items):
-                if hasattr(item, 'rect') and item['rect'].collidepoint(mouse_pos):
-                    self.selected_index = i
-                    return True
-                    
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            # Check if clicked on any menu item
-            mouse_pos = pygame.mouse.get_pos()
-            for i, item in enumerate(self.menu_items):
-                if hasattr(item, 'rect') and item['rect'].collidepoint(mouse_pos):
-                    self.selected_index = i
-                    if item['callback']:
-                        item['callback']()
-                    return True
-                    
         return False
         
     def update(self, dt):
-        """Update menu state and animations"""
-        # Update animations
+        """Update menu animations"""
         self.animation_time += dt
+        # Apply pulsing effect to selected item
+        pulse_value = (math.sin(self.animation_time * self.pulse_rate * math.pi) + 1) / 2  # Value between 0 and 1
         
-        # Mark the selected item
+        # Update selected state based on selected_index
         for i, item in enumerate(self.menu_items):
             item['selected'] = (i == self.selected_index)
             
     def draw(self, screen):
-        """Draw the menu with enhanced visuals"""
-        # Background
-        if self.bg_image:
-            screen.blit(self.bg_image, (0, 0))
-        else:
-            # Gradient background fallback
-            for y in range(0, self.height, 2):
-                value = max(0, min(255, int(10 + (y / self.height) * 40)))
-                pygame.draw.line(screen, (value, value, value + 5), (0, y), (self.width, y))
+        """Draw the menu with OpenGL or PyGame"""
+        # Get UI renderer
+        renderer = get_ui_renderer(self.width, self.height)
+        using_opengl = OPENGL_AVAILABLE and renderer is not None
+            
+        # Draw background
+        if using_opengl:
+            if self.bg_texture:
+                renderer.draw_texture(self.bg_texture, 0, 0, self.width, self.height)
+            else:
+                # Draw solid color background
+                renderer.draw_rectangle(0, 0, self.width, self.height, self.bg_color)
         
-        # Add a semi-transparent overlay for better text visibility
-        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 30, 150))  # Semi-transparent dark blue
-        screen.blit(overlay, (0, 0))
-        
-        # Draw title with shadow effect
-        screen.blit(self.title_shadow, self.title_shadow_rect)
-        screen.blit(self.title_render, self.title_rect)
-        
-        # Draw subtle decoration line below title
-        line_y = self.title_rect.bottom + 20
-        pygame.draw.line(screen, self.title_color, (self.width // 4, line_y), (self.width * 3 // 4, line_y), 2)
-        
-        # Calculate pulsing effect for selected item
-        pulse_scale = 1.0
-        if self.animation_time > 0:
-            pulse_scale = 1.0 + 0.05 * abs(math.sin(self.animation_time * self.pulse_rate * math.pi))
+            # Draw title with shadow
+            if self.title_texture:
+                # Draw shadow
+                shadow_offset = 3
+                renderer.draw_texture(
+                    self.title_texture, 
+                    self.title_rect.x + shadow_offset, 
+                    self.title_rect.y + shadow_offset, 
+                    self.title_rect.width, 
+                    self.title_rect.height, 
+                    (0, 0, 0, 200)  # Dark shadow color
+                )
+                
+                # Draw title
+                renderer.draw_texture(
+                    self.title_texture,
+                    self.title_rect.x,
+                    self.title_rect.y,
+                    self.title_rect.width,
+                    self.title_rect.height
+                )
         
         # Draw menu items
-        item_y = self.height // 2
         for i, item in enumerate(self.menu_items):
-            # Determine if this is the selected item
-            is_selected = item['selected']
+                # Calculate position
+                y_pos = self.height // 2 + i * 60
+                
+                # Draw button background
+                if item['selected']:
+                    # Selected item has different background
+                    renderer.draw_rectangle(
+                        self.width // 2 - self.button_width // 2,
+                        y_pos,
+                        self.button_width,
+                        self.button_height,
+                        self.selected_bg_color
+                    )
+                    text_color = self.selected_color
+                else:
+                    # Normal item background
+                    renderer.draw_rectangle(
+                        self.width // 2 - self.button_width // 2,
+                        y_pos,
+                        self.button_width,
+                        self.button_height,
+                        (40, 40, 80, 180)  # Semi-transparent dark blue
+                    )
+                    text_color = self.item_color
+                    
+                # Draw text
+                text_surface = self.item_font.render(item['text'], True, text_color)
+                text_width, text_height = text_surface.get_size()
+                text_x = self.width // 2 - text_width // 2
+                text_y = y_pos + self.button_height // 2 - text_height // 2
+                
+                # Create texture for text if needed
+                text_texture = renderer.create_texture_from_surface(text_surface)
+                renderer.draw_texture(
+                    text_texture,
+                    text_x,
+                    text_y,
+                    text_width,
+                    text_height
+                )
+        else:
+            # PyGame fallback rendering
             
-            # Prepare text
-            color = self.selected_color if is_selected else self.item_color
-            text_render = self.item_font.render(item['text'], True, color)
-            text_rect = text_render.get_rect(center=(self.width // 2, item_y))
+            # Draw background
+            if self.bg_image:
+                screen.blit(self.bg_image, (0, 0))
+            else:
+                screen.fill(self.bg_color)
+                
+            # Draw title with shadow
+            screen.blit(self.title_shadow, self.title_shadow_rect)
+            screen.blit(self.title_render, self.title_rect)
             
-            # Store rect for mouse interaction
-            # Make hitbox a bit larger than the visual button
-            hitbox_rect = text_rect.inflate(60, 30)
-            item['rect'] = hitbox_rect
-            
-            # Draw button background
-            if self.button_image and not is_selected:
-                # Regular button
-                button_rect = pygame.Rect(0, 0, self.button_width, self.button_height)
-                button_rect.center = (self.width // 2, item_y)
+            # Draw menu items
+            for i, item in enumerate(self.menu_items):
+                # Calculate position
+                y_pos = self.height // 2 + i * 60
                 
-                # Add shadow
-                shadow_rect = button_rect.copy()
-                shadow_rect.move_ip(4, 4)
-                shadow = pygame.Surface((button_rect.width, button_rect.height), pygame.SRCALPHA)
-                shadow.fill(self.button_shadow_color)
-                screen.blit(shadow, shadow_rect)
+                # Draw button background
+                button_rect = pygame.Rect(
+                    self.width // 2 - self.button_width // 2,
+                    y_pos,
+                    self.button_width,
+                    self.button_height
+                )
                 
-                # Scale button image to fit text
-                scaled_button = pygame.transform.scale(self.button_image, (button_rect.width, button_rect.height))
-                screen.blit(scaled_button, button_rect)
-            elif self.button_image and is_selected:
-                # Selected button - apply pulse scale effect
-                scaled_width = int(self.button_width * pulse_scale)
-                scaled_height = int(self.button_height * pulse_scale)
-                button_rect = pygame.Rect(0, 0, scaled_width, scaled_height)
-                button_rect.center = (self.width // 2, item_y)
+                if item['selected']:
+                    # Selected item
+                    s = pygame.Surface((self.button_width, self.button_height), pygame.SRCALPHA)
+                    s.fill(self.selected_bg_color)
+                    screen.blit(s, button_rect)
+                    text_color = self.selected_color
+                else:
+                    # Normal item
+                    s = pygame.Surface((self.button_width, self.button_height), pygame.SRCALPHA)
+                    s.fill((40, 40, 80, 180))  # Semi-transparent dark blue
+                    screen.blit(s, button_rect)
+                    text_color = self.item_color
                 
-                # Add shadow for selected button
-                shadow_rect = button_rect.copy()
-                shadow_rect.move_ip(4, 4)
-                shadow = pygame.Surface((button_rect.width, button_rect.height), pygame.SRCALPHA)
-                shadow.fill(self.button_shadow_color)
-                screen.blit(shadow, shadow_rect)
-                
-                # Scale button image to fit text with pulse effect
-                scaled_button = pygame.transform.scale(self.button_image, (button_rect.width, button_rect.height))
-                screen.blit(scaled_button, button_rect)
-            elif is_selected:
-                # Fallback for selected button (if no image)
-                bg_rect = text_rect.inflate(30, 15)
-                
-                # Add shadow
-                shadow_rect = bg_rect.copy()
-                shadow_rect.move_ip(4, 4)
-                shadow = pygame.Surface((shadow_rect.width, shadow_rect.height), pygame.SRCALPHA)
-                shadow.fill(self.button_shadow_color)
-                screen.blit(shadow, shadow_rect)
-                
-                # Draw button with rounded corners
-                pygame.draw.rect(screen, self.selected_bg_color, bg_rect, border_radius=8)
-                pygame.draw.rect(screen, self.title_color, bg_rect, width=2, border_radius=8)
-            
-            # Draw text centered on button
-            screen.blit(text_render, text_rect)
-            
-            # Move to next item position
-            item_y += 80
+                # Draw text
+                text_surface = self.item_font.render(item['text'], True, text_color)
+                text_rect = text_surface.get_rect(center=button_rect.center)
+                screen.blit(text_surface, text_rect)

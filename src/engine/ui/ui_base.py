@@ -4,6 +4,14 @@ import enum
 import pygame
 from typing import Callable, Dict, Any, Optional, List, Tuple
 
+# Try to import OpenGL UI renderer
+try:
+    from .opengl_ui_renderer import OpenGLUIRenderer
+    OPENGL_AVAILABLE = True
+except ImportError:
+    OPENGL_AVAILABLE = False
+    print("OpenGL UI renderer not available, using fallback rendering")
+
 # --- Événements UI ---
 
 class UIEventType(enum.Enum):
@@ -42,6 +50,20 @@ class LayoutManager:
         """
         self.apply_layout(element)
 
+# Global UI renderer instance
+ui_renderer = None
+
+def get_ui_renderer(width=800, height=600):
+    """Get or create the global UI renderer instance"""
+    global ui_renderer
+    if ui_renderer is None:
+        if OPENGL_AVAILABLE:
+            ui_renderer = OpenGLUIRenderer(width, height)
+        else:
+            # Using None as a placeholder to indicate software rendering
+            ui_renderer = None
+    return ui_renderer
+
 # --- Élément UI de Base ---
 
 class UIElement:
@@ -79,6 +101,7 @@ class UIElement:
         self.layout: Optional[LayoutManager] = layout
         self.opacity: float = 1.0
         self.scale: np.ndarray = np.array([1.0, 1.0], dtype=float)
+        self.texture_id = 0  # OpenGL texture ID for this element
 
         # Gestionnaires d'événements spécifiques à cet élément
         self.event_handlers: Dict[UIEventType, List[Callable[[UIEvent], bool]]] = {
@@ -253,334 +276,411 @@ class UIElement:
     def get_texture_id(self) -> Any:
         """
         Retourne l'ID de texture pour cet élément, si applicable.
-        Par défaut, retourne None. Les classes dérivées peuvent surcharger.
+        Les classes dérivées peuvent surcharger cette méthode.
         """
-        return None
+        return self.texture_id
 
     def on(self, event_type: UIEventType, handler: Callable[[UIEvent], bool]):
-        """Ajoute un gestionnaire d'événement pour le type spécifié."""
+        """Enregistre un gestionnaire d'événements pour un type spécifique."""
         self.event_handlers[event_type].append(handler)
+        return self  # Permet le chaînage des appels
 
     def off(self, event_type: UIEventType, handler: Callable[[UIEvent], bool]):
-        """Retire un gestionnaire d'événement pour le type spécifié."""
+        """Retire un gestionnaire d'événements pour un type spécifique."""
         if handler in self.event_handlers[event_type]:
             self.event_handlers[event_type].remove(handler)
+        return self  # Permet le chaînage des appels
 
-    def _trigger_event(self, event: UIEvent) -> bool:
-        """Déclenche les gestionnaires d'événements enregistrés pour ce type."""
-        if event.type not in self.event_handlers:
-            return False
-
-        for handler in self.event_handlers[event.type]:
-            if handler(event):
-                event.handled = True
-                return True
+    def _trigger_event(self, event) -> bool:
+        """Déclenche les gestionnaires d'événements pour l'événement donné."""
+        # Check if the event is a UIEvent or a pygame.event.Event
+        # pygame events don't have a 'handled' attribute, so we need to handle both cases
+        event_handled = getattr(event, 'handled', False)
+        
+        # Only process if the event hasn't been handled and the element is visible
+        if not event_handled and self.visible:
+            # Convert pygame.event.Event to UIEvent if needed
+            if not hasattr(event, 'type') or not isinstance(event.type, UIEventType):
+                # Map pygame event types to UIEventType
+                event_type = None
+                event_data = {}
+                
+                if hasattr(event, 'type'):
+                    # Handle pygame mouse events
+                    if event.type == pygame.MOUSEMOTION:
+                        event_type = UIEventType.MOUSE_MOTION
+                        event_data = {"x": event.pos[0], "y": event.pos[1]}
+                    elif event.type == pygame.MOUSEBUTTONDOWN:
+                        event_type = UIEventType.MOUSE_BUTTON_DOWN
+                        event_data = {"x": event.pos[0], "y": event.pos[1], "button": event.button}
+                    elif event.type == pygame.MOUSEBUTTONUP:
+                        event_type = UIEventType.MOUSE_BUTTON_UP
+                        event_data = {"x": event.pos[0], "y": event.pos[1], "button": event.button}
+                    elif event.type == pygame.KEYDOWN:
+                        event_type = UIEventType.KEY_DOWN
+                        event_data = {"key": event.key, "unicode": getattr(event, 'unicode', '')}
+                    elif event.type == pygame.KEYUP:
+                        event_type = UIEventType.KEY_UP
+                        event_data = {"key": event.key}
+                
+                # If we couldn't map the event, return False
+                if event_type is None:
+                    return False
+                    
+                # Create a UIEvent from the pygame event
+                ui_event = UIEvent(event_type, event_data)
+                event = ui_event
+            
+            # Call the handlers for this event type
+            if hasattr(event, 'type') and isinstance(event.type, UIEventType):
+                for handler in self.event_handlers[event.type]:
+                    if handler(event):
+                        if hasattr(event, 'handled'):
+                            event.handled = True
+                        return True
+                        
+                # Return whether the event was handled
+                return getattr(event, 'handled', False)
+        
         return False
 
-    def handle_event(self, event: UIEvent) -> bool:
+    def handle_event(self, event) -> bool:
         """
-        Traite un événement UI et le propage aux enfants si nécessaire.
-        Retourne True si l'événement a été géré.
+        Gère un événement. Par défaut, l'événement est propagé aux enfants
+        avant d'être traité par cet élément, donnant aux enfants la priorité.
+        Les événements peuvent être consommés (traités) par les enfants avant d'arriver à nous.
         """
-        if not self.visible:
+        if not self.visible or not self.is_event_relevant(event):
             return False
 
-        # Vérifier si l'événement est pertinent pour cet élément
-        if not self.is_event_relevant(event):
-            return False
-
-        # Propager aux enfants d'abord (du dessus vers le dessous)
-        for child in sorted(self.children, key=lambda c: -c.z_index):
+        # Propager l'événement aux enfants (parcours de l'avant à l'arrière pour la priorité)
+        # Trier les enfants par z-index décroissant
+        sorted_children = sorted(self.children, key=lambda child: -child.z_index)
+        for child in sorted_children:
             if child.handle_event(event):
                 return True
 
-        # Si aucun enfant n'a géré l'événement, essayer de le gérer soi-même
+        # Si l'événement n'a pas été consommé par les enfants, le traiter
         return self._trigger_event(event)
 
-    def is_event_relevant(self, event: UIEvent) -> bool:
+    def is_event_relevant(self, event) -> bool:
         """
-        Détermine si un événement est pertinent pour cet élément.
-        Par exemple, pour les événements de souris, vérifie si la position est dans les limites.
+        Vérifie si un événement est pertinent pour cet élément.
+        Par exemple, un événement de souris n'est pertinent que si le curseur
+        est à l'intérieur de la zone de l'élément.
+        Cette méthode peut être surchargée par les classes dérivées.
         """
-        if event.type in [UIEventType.MOUSE_MOTION, UIEventType.MOUSE_BUTTON_DOWN, UIEventType.MOUSE_BUTTON_UP]:
-            # Vérifier si la position de la souris est à l'intérieur des limites
-            mouse_pos = event.data.get('position')
-            if mouse_pos:
-                x, y = mouse_pos
-                return (self.absolute_position[0] <= x <= self.absolute_position[0] + self.size[0] and
-                        self.absolute_position[1] <= y <= self.absolute_position[1] + self.size[1])
-            return False
-        # Pour les autres types d'événements, considérer que c'est pertinent
+        # For pygame events, map them to our event types
+        event_type = None
+        mouse_pos = None
+        
+        # Handle both UIEvent and pygame.event.Event
+        if hasattr(event, 'type'):
+            if isinstance(event.type, UIEventType):
+                # It's a UIEvent
+                event_type = event.type
+                if event_type in [UIEventType.MOUSE_MOTION, UIEventType.MOUSE_BUTTON_DOWN, UIEventType.MOUSE_BUTTON_UP]:
+                    mouse_pos = (event.data.get("x", 0), event.data.get("y", 0))
+            else:
+                # It's a pygame event
+                if event.type == pygame.MOUSEMOTION:
+                    event_type = UIEventType.MOUSE_MOTION
+                    mouse_pos = event.pos
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    event_type = UIEventType.MOUSE_BUTTON_DOWN
+                    mouse_pos = event.pos
+                elif event.type == pygame.MOUSEBUTTONUP:
+                    event_type = UIEventType.MOUSE_BUTTON_UP
+                    mouse_pos = event.pos
+        
+        # Check if it's a mouse event and if the mouse is inside our area
+        if event_type in [UIEventType.MOUSE_MOTION, UIEventType.MOUSE_BUTTON_DOWN, UIEventType.MOUSE_BUTTON_UP] and mouse_pos:
+            # Check if coordinates are inside our area
+            x, y = self.absolute_position
+            w, h = self.size
+            return (x <= mouse_pos[0] <= x + w) and (y <= mouse_pos[1] <= y + h)
+        
+        # For other event types, consider them relevant by default
         return True
 
     def update(self, dt: float):
         """
-        Met à jour l'état de l'élément UI et de ses enfants.
-        Args:
-            dt (float): Temps écoulé depuis la dernière mise à jour (en secondes).
+        Met à jour l'élément UI et ses enfants.
+        Par défaut, ne fait rien sauf propager l'appel aux enfants.
         """
-        # Mettre à jour les enfants
         for child in self.children:
             child.update(dt)
 
-# --- Panel UI ---
+    def draw(self, screen):
+        """
+        Draw this element using OpenGL or PyGame depending on availability.
+        Override in subclasses to provide specific drawing behavior.
+        """
+        # Draw children by default
+        if self.visible:
+            for child in self.children:
+                child.draw(screen)
 
 class Panel(UIElement):
     """
-    Un conteneur rectangulaire simple pour regrouper des éléments UI.
-    Peut avoir une couleur de fond ou une bordure.
+    A panel UI element that can contain other UI elements.
     """
     def __init__(self, x=0, y=0, width=100, height=100, color=(0, 0, 0, 180), parent=None):
-        """
-        Initialise un panneau.
-        
-        Args:
-            x (int): Position X relative au parent.
-            y (int): Position Y relative au parent.
-            width (int): Largeur du panneau.
-            height (int): Hauteur du panneau.
-            color (tuple): Couleur RGBA (0-255) du panneau.
-            parent (UIElement, optional): Élément parent.
-        """
-        super().__init__(x=x, y=y, width=width, height=height, parent=parent)
+        super().__init__(x, y, width, height, parent)
         self.color = color
-        self.border_color = None
-        self.border_width = 0
     
     def draw(self, screen):
-        """
-        Dessine le panneau et ses enfants sur l'écran.
-        
-        Args:
-            screen: Surface pygame sur laquelle dessiner.
-        """
-        if not self.visible or self.opacity <= 0:
+        """Draw the panel"""
+        if not self.visible:
             return
         
-        # Créer une surface avec transparence
-        panel_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        renderer = get_ui_renderer(screen.get_width(), screen.get_height())
         
-        # Dessiner le fond
-        if self.color:
-            pygame.draw.rect(panel_surface, self.color, (0, 0, self.width, self.height))
+        # Use OpenGL if available
+        if renderer is not None and OPENGL_AVAILABLE:
+            # Draw with OpenGL
+            x, y = self.absolute_position
+            renderer.draw_rectangle(x, y, self.width, self.height, self.color)
+        else:
+            # Fallback to pygame
+            x, y = self.absolute_position
+            
+            # Create surface with transparency if needed
+            if len(self.color) > 3 and self.color[3] < 255:
+                # Create transparent surface
+                panel_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+                pygame.draw.rect(panel_surface, self.color, (0, 0, self.width, self.height))
+                screen.blit(panel_surface, (x, y))
+            else:
+                # Draw solid rectangle
+                pygame.draw.rect(screen, self.color[:3], (x, y, self.width, self.height))
         
-        # Dessiner la bordure si nécessaire
-        if self.border_color and self.border_width > 0:
-            pygame.draw.rect(panel_surface, self.border_color, (0, 0, self.width, self.height), self.border_width)
-        
-        # Appliquer l'opacité
-        if self.opacity < 1.0:
-            alpha = int(255 * self.opacity)
-            panel_surface.set_alpha(alpha)
-        
-        # Afficher le panneau
-        screen.blit(panel_surface, self.absolute_position)
-        
-        # Dessiner les enfants
+        # Draw children
         for child in self.children:
-            if hasattr(child, 'draw'):
                 child.draw(screen)
-
-# --- Label UI ---
 
 class Label(UIElement):
     """
-    Un élément UI pour afficher du texte.
+    A text label UI element.
     """
     def __init__(self, x=0, y=0, text="Label", font_size=20, color=(255, 255, 255), 
                  centered=False, width=None, height=None, parent=None):
         """
-        Initialise une étiquette.
+        Initialize a text label.
         
         Args:
-            x (int): Position X relative au parent.
-            y (int): Position Y relative au parent.
-            text (str): Texte à afficher.
-            font_size (int): Taille de la police.
-            color (tuple): Couleur RGB (0-255) du texte.
-            centered (bool): Si True, le texte est centré à la position (x, y).
-            width (int, optional): Largeur explicite. Si None, déterminée par le texte.
-            height (int, optional): Hauteur explicite. Si None, déterminée par le texte.
-            parent (UIElement, optional): Élément parent.
+            x (int): X position relative to parent.
+            y (int): Y position relative to parent.
+            text (str): Text content to display.
+            font_size (int): Font size to use.
+            color (tuple): RGB (0-255) color of the text.
+            centered (bool): Whether to center the text within the label bounds.
+            width (int, optional): Width of the label. If None, will fit the text.
+            height (int, optional): Height of the label. If None, will fit the text.
+            parent (UIElement, optional): Parent element.
         """
-        # Créer la police et calculer la taille du texte si nécessaire
-        self.font = pygame.font.SysFont(None, font_size)
-        text_surface = self.font.render(text, True, color)
-        text_width, text_height = text_surface.get_size()
-        
-        # Utiliser la taille calculée si non spécifiée
-        if width is None:
-            width = text_width
-        if height is None:
-            height = text_height
-        
+        # Default width and height if not provided
+        if width is None or height is None:
+            # Create font to measure text
+            font = pygame.font.SysFont(None, font_size)
+            # Measure text
+            text_surface = font.render(text, True, color)
+            text_width, text_height = text_surface.get_size()
+            
+            # Use text size if width/height not specified
+            if width is None:
+                width = text_width
+            if height is None:
+                height = text_height
+            
+        # Initialize with calculated or provided dimensions
         super().__init__(x=x, y=y, width=width, height=height, parent=parent)
         
         self.text = text
         self.font_size = font_size
         self.color = color
         self.centered = centered
+        self.font = pygame.font.SysFont(None, font_size)
+
+    def _update_size_from_text(self):
+        """Update the size of the label based on text content"""
+        text_surface = self.font.render(self.text, True, self.color)
+        text_width, text_height = text_surface.get_size()
+        # Only update size if it's not explicitly set
+        if self.width == 100:  # Default value
+            self.width = text_width
+        if self.height == 30:  # Default value
+            self.height = text_height
     
     def draw(self, screen):
-        """
-        Dessine l'étiquette sur l'écran.
-        
-        Args:
-            screen: Surface pygame sur laquelle dessiner.
-        """
-        if not self.visible or self.opacity <= 0 or not self.text:
+        """Draw the label"""
+        if not self.visible:
             return
         
-        # Rendre le texte
-        text_surface = self.font.render(self.text, True, self.color)
-        
-        # Calculer la position d'affichage
+        renderer = get_ui_renderer(screen.get_width(), screen.get_height())
         x, y = self.absolute_position
         
+        # Center text if requested
         if self.centered:
-            # Centrer le texte à la position spécifiée
-            text_rect = text_surface.get_rect(center=(x + self.width // 2, y + self.height // 2))
-            display_pos = text_rect.topleft
+            text_surface = self.font.render(self.text, True, self.color)
+            text_width, text_height = text_surface.get_size()
+            x = x + (self.width - text_width) // 2
+            y = y + (self.height - text_height) // 2
+        
+        # Use OpenGL if available
+        if renderer is not None and OPENGL_AVAILABLE:
+            # Render text with OpenGL
+            renderer.render_text(self.text, self.font, self.color, x, y)
         else:
-            # Utiliser la position directement
-            display_pos = (x, y)
-        
-        # Appliquer l'opacité si nécessaire
-        if self.opacity < 1.0:
-            alpha = int(255 * self.opacity)
-            text_surface.set_alpha(alpha)
-        
-        # Afficher le texte
-        screen.blit(text_surface, display_pos)
+            # Fallback to pygame
+            text_surface = self.font.render(self.text, True, self.color)
+            screen.blit(text_surface, (x, y))
 
-# --- Button UI ---
+        # Draw children
+        for child in self.children:
+            child.draw(screen)
 
 class Button(UIElement):
     """
-    Un bouton interactif qui peut être cliqué.
+    A clickable button UI element.
     """
     def __init__(self, x=0, y=0, width=100, height=30, text="Button", 
                  color=(100, 100, 140), hover_color=None, text_color=(255, 255, 255),
                  on_click=None, parent=None):
-        """
-        Initialise un bouton.
-        
-        Args:
-            x (int): Position X relative au parent.
-            y (int): Position Y relative au parent.
-            width (int): Largeur du bouton.
-            height (int): Hauteur du bouton.
-            text (str): Texte à afficher sur le bouton.
-            color (tuple): Couleur RGB (0-255) du bouton.
-            hover_color (tuple, optional): Couleur du bouton lors du survol. Si None, calculée à partir de color.
-            text_color (tuple): Couleur RGB (0-255) du texte.
-            on_click (callable, optional): Fonction à appeler lors d'un clic.
-            parent (UIElement, optional): Élément parent.
-        """
-        super().__init__(x=x, y=y, width=width, height=height, parent=parent)
+        super().__init__(x, y, width, height, parent)
         
         self.text = text
         self.color = color
+        self.hover_color = hover_color or (min(color[0]+30, 255), min(color[1]+30, 255), min(color[2]+30, 255))
         self.text_color = text_color
         self.on_click = on_click
         
-        # Calculer une couleur de survol par défaut si non spécifiée
-        if hover_color is None:
-            # Plus claire que la couleur normale
-            self.hover_color = tuple(min(c + 30, 255) for c in color)
-        else:
-            self.hover_color = hover_color
+        # Button state
+        self.hovered = False
+        self.pressed = False
         
-        # État du bouton
-        self.is_hovered = False
-        self.is_pressed = False
-        
-        # Créer la police
+        # Create font
         self.font = pygame.font.SysFont(None, 24)
+        
+        # Create OpenGL texture for button (if OpenGL is available)
+        self._create_textures()
+    
+    def _create_textures(self):
+        """Create OpenGL textures for the button states"""
+        renderer = get_ui_renderer()
+        if not OPENGL_AVAILABLE or renderer is None:
+            return
+            
+        # We'll create textures when needed in the draw method
+        pass
     
     def handle_event(self, event):
-        """
-        Gère les événements pour le bouton.
-        
-        Args:
-            event: L'événement pygame à traiter.
-            
-        Returns:
-            bool: True si l'événement a été traité, False sinon.
-        """
+        """Handle button events (hover, click)"""
         if not self.visible:
             return False
         
-        # Vérifier si la souris est sur le bouton
-        if hasattr(event, 'pos'):
-            mouse_x, mouse_y = event.pos
-            is_over = (self.absolute_position[0] <= mouse_x <= self.absolute_position[0] + self.width and
-                       self.absolute_position[1] <= mouse_y <= self.absolute_position[1] + self.height)
-            
-            # Mise à jour de l'état du survol
-            if is_over != self.is_hovered:
-                self.is_hovered = is_over
-                # Changer l'apparence pour le survol
-            
-            # Gérer les clics
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and is_over:
-                self.is_pressed = True
-                return True
-            
-            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-                was_pressed = self.is_pressed
-                self.is_pressed = False
+        # Process pygame events directly
+        if hasattr(event, 'type') and not isinstance(event.type, UIEventType):
+            # Handle mouse motion
+            if event.type == pygame.MOUSEMOTION:
+                mouse_pos = event.pos
+                x, y = self.absolute_position
                 
-                if was_pressed and is_over and self.on_click:
+                # Check if mouse is over the button
+                was_hovered = self.hovered
+                self.hovered = (x <= mouse_pos[0] <= x + self.width and y <= mouse_pos[1] <= y + self.height)
+                
+                # Return True if hover state changed
+                return was_hovered != self.hovered
+                
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_pos = event.pos
+                x, y = self.absolute_position
+                if (x <= mouse_pos[0] <= x + self.width and y <= mouse_pos[1] <= y + self.height):
+                    self.hovered = True
+                    self.pressed = True
+                    return True
+                
+            elif event.type == pygame.MOUSEBUTTONUP:
+                was_pressed = self.pressed
+                self.pressed = False
+                
+                mouse_pos = event.pos
+                x, y = self.absolute_position
+                self.hovered = (x <= mouse_pos[0] <= x + self.width and y <= mouse_pos[1] <= y + self.height)
+                    
+                # If button was pressed and mouse is still over it, trigger click event
+                if was_pressed and self.hovered and self.on_click:
                     self.on_click()
+                    return True
+        # Process UIEvent objects
+        elif hasattr(event, 'type') and isinstance(event.type, UIEventType):
+            # Handle mouse motion
+            if event.type == UIEventType.MOUSE_MOTION:
+                mouse_x, mouse_y = event.data.get("x", 0), event.data.get("y", 0)
+                x, y = self.absolute_position
                 
-                return was_pressed and is_over
-        
-        return False
+                # Check if mouse is over the button
+                was_hovered = self.hovered
+                self.hovered = (x <= mouse_x <= x + self.width and y <= mouse_y <= y + self.height)
+                
+                # Return True if hover state changed
+                return was_hovered != self.hovered
+                
+            elif event.type == UIEventType.MOUSE_BUTTON_DOWN:
+                if self.hovered:
+                    self.pressed = True
+                    return True
+                
+            elif event.type == UIEventType.MOUSE_BUTTON_UP:
+                was_pressed = self.pressed
+                self.pressed = False
+                    
+                # If button was pressed and mouse is still over it, trigger click event
+                if was_pressed and self.hovered and self.on_click:
+                    self.on_click()
+                    return True
+                
+        # Let parent handle events as well
+        return super().handle_event(event)
     
     def draw(self, screen):
-        """
-        Dessine le bouton sur l'écran.
-        
-        Args:
-            screen: Surface pygame sur laquelle dessiner.
-        """
-        if not self.visible or self.opacity <= 0:
+        """Draw the button"""
+        if not self.visible:
             return
         
-        # Choisir la couleur selon l'état
-        if self.is_pressed and self.is_hovered:
-            # Couleur plus foncée pour l'état enfoncé
-            button_color = tuple(max(c - 30, 0) for c in self.color)
-        elif self.is_hovered:
-            button_color = self.hover_color
+        renderer = get_ui_renderer(screen.get_width(), screen.get_height())
+        x, y = self.absolute_position
+        
+        # Choose button color based on state
+        button_color = self.hover_color if self.hovered else self.color
+        if self.pressed:
+            # Darken color when pressed
+            button_color = (max(0, button_color[0]-30), max(0, button_color[1]-30), max(0, button_color[2]-30))
+        
+        # Use OpenGL if available
+        if renderer is not None and OPENGL_AVAILABLE:
+            # Draw button rectangle
+            renderer.draw_rectangle(x, y, self.width, self.height, button_color)
+        
+            # Render button text
+            text_surface = self.font.render(self.text, True, self.text_color)
+            text_width, text_height = text_surface.get_size()
+            text_x = x + (self.width - text_width) // 2
+            text_y = y + (self.height - text_height) // 2
+            renderer.render_text(self.text, self.font, self.text_color, text_x, text_y)
+            
         else:
-            button_color = self.color
+            # Fallback to pygame
+            pygame.draw.rect(screen, button_color, (x, y, self.width, self.height))
+            
+            # Draw button text
+            text_surface = self.font.render(self.text, True, self.text_color)
+            text_width, text_height = text_surface.get_size()
+            screen.blit(text_surface, (x + (self.width - text_width) // 2, y + (self.height - text_height) // 2))
         
-        # Créer une surface avec transparence pour le bouton
-        button_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        
-        # Dessiner le fond du bouton
-        pygame.draw.rect(button_surface, button_color, (0, 0, self.width, self.height), border_radius=5)
-        
-        # Rendre le texte
-        text_surface = self.font.render(self.text, True, self.text_color)
-        text_rect = text_surface.get_rect(center=(self.width // 2, self.height // 2))
-        
-        # Ajouter le texte sur le bouton
-        button_surface.blit(text_surface, text_rect)
-        
-        # Appliquer l'opacité si nécessaire
-        if self.opacity < 1.0:
-            alpha = int(255 * self.opacity)
-            button_surface.set_alpha(alpha)
-        
-        # Afficher le bouton
-        screen.blit(button_surface, self.absolute_position)
-        
-        # Dessiner les enfants
+        # Draw children
         for child in self.children:
-            if hasattr(child, 'draw'):
                 child.draw(screen)
 
 class Slider(UIElement):
@@ -647,59 +747,98 @@ class Slider(UIElement):
         return self.min_value + value_ratio * (self.max_value - self.min_value)
     
     def handle_event(self, event):
-        """Handle input events for the slider."""
+        """Handle slider events."""
         if not self.visible:
             return False
         
-        # Get absolute mouse position
-        mouse_x, mouse_y = 0, 0
-        if hasattr(event, 'pos'):
-            mouse_x, mouse_y = event.pos
-        
-        # Calculate handle position and bounds
+        x, y = self.absolute_position
+        width, height = self.size
         handle_x = self._get_handle_x()
-        abs_x, abs_y = self.absolute_position
-        handle_bounds = (
-            abs_x + handle_x,
-            abs_y - 5,  # Slightly larger hitbox
-            self.handle_width,
-            self.handle_height + 10
+        handle_width = self.handle_width
+        
+        # Calculate handle rect
+        handle_rect = pygame.Rect(
+            x + handle_x - handle_width//2,
+            y - 5,
+            handle_width,
+            self.handle_height
         )
         
-        # Check if mouse is over handle or track
-        is_over_handle = (
-            handle_bounds[0] <= mouse_x <= handle_bounds[0] + handle_bounds[2] and
-            handle_bounds[1] <= mouse_y <= handle_bounds[1] + handle_bounds[3]
-        )
-        
-        is_over_track = (
-            abs_x <= mouse_x <= abs_x + self.width and
-            abs_y <= mouse_y <= abs_y + self.height
-        )
-        
-        # Handle mouse events
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 1:  # Left mouse button
-                if is_over_handle:
+        # Handle pygame events directly
+        if hasattr(event, 'type') and not isinstance(event.type, UIEventType):
+            # Handle mouse motion
+            if event.type == pygame.MOUSEMOTION:
+                mouse_pos = event.pos
+                
+                # If dragging, update value
+                if self.is_dragging:
+                    relative_x = mouse_pos[0] - x
+                    self.value = self._value_from_x(relative_x)
+                    return True
+            
+            # Handle mouse button down    
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:  # Left click
+                mouse_pos = event.pos
+                
+                # Check if click is on the handle
+                if handle_rect.collidepoint(mouse_pos):
                     self.is_dragging = True
                     return True
-                elif is_over_track:
-                    # Set value directly when clicking on track
-                    self.value = self._value_from_x(mouse_x)
+                
+                # Check if click is on the track
+                if pygame.Rect(x, y, width, height).collidepoint(mouse_pos):
+                    # Set value directly based on click position
+                    relative_x = mouse_pos[0] - x
+                    self.value = self._value_from_x(relative_x)
+                    self.is_dragging = True
                     return True
                     
-        elif event.type == pygame.MOUSEBUTTONUP:
-            if event.button == 1 and self.is_dragging:
-                self.is_dragging = False
-                return True
-                
-        elif event.type == pygame.MOUSEMOTION:
-            if self.is_dragging:
-                # Update value when dragging
-                self.value = self._value_from_x(mouse_x)
-                return True
+            # Handle mouse button up
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:  # Left release
+                if self.is_dragging:
+                    self.is_dragging = False
+                    return True
         
-        return False
+        # Process UIEvent objects
+        elif hasattr(event, 'type') and isinstance(event.type, UIEventType):
+            # Handle mouse events from UIEvent
+            if event.type == UIEventType.MOUSE_MOTION:
+                mouse_x = event.data.get("x", 0)
+                mouse_y = event.data.get("y", 0)
+                
+                # If dragging, update value
+                if self.is_dragging:
+                    relative_x = mouse_x - x
+                    self.value = self._value_from_x(relative_x)
+                    return True
+                
+            elif event.type == UIEventType.MOUSE_BUTTON_DOWN:
+                mouse_x = event.data.get("x", 0)
+                mouse_y = event.data.get("y", 0)
+                button = event.data.get("button", 1)
+                
+                if button == 1:  # Left click
+                    # Check if click is on the handle
+                    if handle_rect.collidepoint((mouse_x, mouse_y)):
+                        self.is_dragging = True
+                        return True
+                    
+                    # Check if click is on the track
+                    if pygame.Rect(x, y, width, height).collidepoint((mouse_x, mouse_y)):
+                        # Set value directly based on click position
+                        relative_x = mouse_x - x
+                        self.value = self._value_from_x(relative_x)
+                        self.is_dragging = True
+                        return True
+                    
+            elif event.type == UIEventType.MOUSE_BUTTON_UP:
+                button = event.data.get("button", 1)
+                if button == 1 and self.is_dragging:  # Left release
+                    self.is_dragging = False
+                    return True
+        
+        # Let parent handle events as well
+        return super().handle_event(event)
     
     def draw(self, screen):
         """Draw the slider on the screen."""

@@ -15,13 +15,22 @@ except ImportError:
     print("OpenGL not available for SkySystem, using fallback")
 
 class SkySystem:
-    def __init__(self):
+    def __init__(self, renderer=None):
         # Fallback surface for software rendering
         self.fallback_surface = pygame.Surface((800, 600))  # Default size
         self.fallback_surface.fill((135, 206, 235))  # Sky blue
         
-        # OpenGL state
-        self.using_gl = OPENGL_AVAILABLE
+        # Check if OpenGL and shaders are available
+        self.using_gl = False
+        self.shaders_available = False
+        
+        if renderer and hasattr(renderer, 'has_feature'):
+            self.shaders_available = renderer.has_feature('shaders')
+            self.using_gl = renderer.gl_context and renderer.gl_context.active
+        else:
+            # Legacy check for OpenGL and shader availability
+            self.using_gl = OPENGL_AVAILABLE
+            self.shaders_available = self._check_shader_support()
         
         # Cloud parameters
         self.cloud_coverage = 0.5
@@ -46,9 +55,10 @@ class SkySystem:
         self.aurora_intensity = 0.0
         self.aurora_color = (0.1, 0.8, 0.3) if not OPENGL_AVAILABLE else glm.vec3(0.1, 0.8, 0.3)
         
-        # Skip OpenGL initialization if not available
-        if not self.using_gl:
-            print("Using fallback sky rendering")
+        # Skip OpenGL initialization if not available or shaders not supported
+        if not self.using_gl or not self.shaders_available:
+            print(f"Using fallback sky rendering: " + 
+                 ("OpenGL not available" if not self.using_gl else "Shaders not supported"))
             self.sky_shader = 0
             self.cloud_shader = 0
             self.aurora_shader = 0
@@ -56,19 +66,25 @@ class SkySystem:
             return
             
         try:
-            # Check if shader functions are available
-            if not bool(glCreateShader):
-                print("Shader functions not available for SkySystem")
-                self.using_gl = False
-                return
-                
             # Initialize shaders
             self.sky_shader = self._create_sky_shader()
+            if not self.sky_shader:
+                raise Exception("Failed to create sky shader")
+                
             self.cloud_shader = self._create_cloud_shader()
+            if not self.cloud_shader:
+                raise Exception("Failed to create cloud shader")
+                
             self.aurora_shader = self._create_aurora_shader()
+            if not self.aurora_shader:
+                raise Exception("Failed to create aurora shader")
             
             # Create volumetric texture for clouds
             self.cloud_texture = self._create_cloud_texture()
+            if not self.cloud_texture:
+                raise Exception("Failed to create cloud texture")
+                
+            print("Sky system initialized with OpenGL rendering")
         except Exception as e:
             print(f"Error initializing SkySystem with OpenGL: {e}")
             self.using_gl = False
@@ -76,6 +92,16 @@ class SkySystem:
             self.cloud_shader = 0
             self.aurora_shader = 0
             self.cloud_texture = 0
+    
+    def _check_shader_support(self):
+        """Check if shader support is available using direct function checks"""
+        if not OPENGL_AVAILABLE:
+            return False
+            
+        try:
+            return bool(glCreateShader) and bool(glShaderSource) and bool(glCompileShader)
+        except (AttributeError, TypeError):
+            return False
         
     def update(self, delta_time: float) -> None:
         # Update time of day
@@ -87,7 +113,7 @@ class SkySystem:
         self._update_sun_position()
         
         # Update fallback if not using OpenGL
-        if not self.using_gl:
+        if not self.using_gl or not self.shaders_available:
             self._update_fallback(delta_time)
             return
             
@@ -105,7 +131,7 @@ class SkySystem:
             print(f"Error updating SkySystem: {e}")
             
     def render(self, camera_matrix: np.ndarray = None) -> None:
-        if not self.using_gl:
+        if not self.using_gl or not self.shaders_available:
             return  # Render is handled by getting the fallback surface
             
         try:

@@ -14,16 +14,28 @@ except ImportError:
     print("OpenGL not available in WaterSystem, using fallback")
 
 class WaterSystem:
-    def __init__(self, window_size: tuple[int, int]):
+    def __init__(self, window_size: tuple[int, int], renderer=None):
         self.window_size = window_size
+        self.renderer = renderer
         
         # Fallback surface for software rendering
         self.fallback_surface = pygame.Surface(window_size)
         self.fallback_surface.fill((0, 100, 200))  # Blue for water
         
-        # Skip OpenGL initialization if not available
-        if not OPENGL_AVAILABLE:
-            print("Using fallback water rendering")
+        # Check if OpenGL and framebuffers are available
+        self.using_gl = False
+        self.framebuffers_available = False
+        
+        if renderer and hasattr(renderer, 'has_feature'):
+            self.framebuffers_available = renderer.has_feature('framebuffers')
+        else:
+            # Legacy check for OpenGL availability
+            self.framebuffers_available = self._check_framebuffer_support()
+        
+        # Skip OpenGL initialization if not available or no framebuffer support
+        if not OPENGL_AVAILABLE or not self.framebuffers_available:
+            print("Using fallback water rendering: " + 
+                  ("OpenGL not available" if not OPENGL_AVAILABLE else "Framebuffers not supported"))
             self.reflection_fbo = None
             self.refraction_fbo = None
             self.water_shader = None
@@ -33,12 +45,20 @@ class WaterSystem:
         try:
             # Create reflection and refraction textures
             self.reflection_fbo = self._create_reflection_fbo()
+            if not self.reflection_fbo:
+                raise Exception("Failed to create reflection framebuffer")
+                
             self.refraction_fbo = self._create_refraction_fbo()
+            if not self.refraction_fbo:
+                raise Exception("Failed to create refraction framebuffer")
             
             # Load shaders
             self.water_shader = self._create_water_shader()
-            
+            if not self.water_shader:
+                raise Exception("Failed to create water shader")
+                
             self.using_gl = True
+            print("Water system initialized with OpenGL rendering")
         except Exception as e:
             print(f"Error initializing WaterSystem with OpenGL: {e}")
             self.reflection_fbo = None
@@ -55,7 +75,17 @@ class WaterSystem:
         
         # Time-based animation
         self.time = 0.0
-        
+    
+    def _check_framebuffer_support(self):
+        """Check if framebuffers are supported using direct function checks"""
+        if not OPENGL_AVAILABLE:
+            return False
+            
+        try:
+            return bool(glGenFramebuffers) and bool(glBindFramebuffer) and bool(glFramebufferTexture2D)
+        except (AttributeError, TypeError):
+            return False
+    
     def update_reflections(self, camera_matrix: np.ndarray) -> None:
         if not self.using_gl:
             return  # Skip if not using OpenGL
@@ -118,7 +148,7 @@ class WaterSystem:
         return self.fallback_surface
         
     def _create_reflection_fbo(self) -> int:
-        if not OPENGL_AVAILABLE:
+        if not OPENGL_AVAILABLE or not self.framebuffers_available:
             return None
             
         try:
@@ -143,6 +173,12 @@ class WaterSystem:
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
                                 GL_TEXTURE_2D, depth_tex, 0)
             
+            # Check framebuffer status
+            status = glCheckFramebufferStatus(GL_FRAMEBUFFER)
+            if status != GL_FRAMEBUFFER_COMPLETE:
+                print(f"Framebuffer incomplete: {status}")
+                return None
+                
             return fbo
         except Exception as e:
             print(f"Error creating reflection FBO: {e}")

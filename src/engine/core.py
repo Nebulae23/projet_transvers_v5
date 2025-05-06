@@ -5,14 +5,12 @@ import sys
 import time
 import numpy as np
 import os
+import json
+import datetime
 
 # Import OpenGL with error handling
 try:
-    from OpenGL.GL import GL_DEPTH_TEST, GL_BLEND, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, \
-                         GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT, GL_CONTEXT_PROFILE_CORE, \
-                         GL_TEXTURE_2D, GL_UNSIGNED_BYTE, GL_RGB, GL_RGBA, \
-                         glEnable, glDisable, glClearColor, glClear, glViewport, \
-                         glBlendFunc, glBindTexture, glActiveTexture
+    from OpenGL.GL import *
     import glm
     OPENGL_AVAILABLE = True
 except ImportError:
@@ -25,10 +23,13 @@ from .physics.verlet_system import PhysicsSystem
 from .ui.hud import GameHUD
 from .ui.menu import MenuManager  # Import just MenuManager from menu.py
 from .ui.menus.main_menu import MainMenu  # Import MainMenu from menus/main_menu.py
+# Import UI renderer
+from .ui.ui_base import get_ui_renderer
 # Remove direct imports that can cause circular dependencies
 from .scenes.demo_scene import DemoScene # Original import
 from .scenes.game.game_scene import GameScene  # Import GameScene
 from .scenes.game.character_creation_scene import CharacterCreationScene  # Import CharacterCreationScene
+from .ui.menus.save_browser_menu import SaveBrowserMenu
 
 # Create OpenGLContext for 3D rendering
 class OpenGLContext:
@@ -38,43 +39,57 @@ class OpenGLContext:
         self.height = 0
         self.shader_manager = None
         self.texture_manager = None
+        # Add feature flags
+        self.features = {
+            "shaders": False,
+            "framebuffers": False,
+            "vao": False,
+            "instancing": False
+        }
         
-    def initialize(self, width, height):
+    def initialize(self, width, height, window):
         """
         Initialize the OpenGL context with the given dimensions.
         
         Args:
             width (int): Viewport width.
             height (int): Viewport height.
+            window (Window): The window object to use for rendering.
         """
         print("Initializing OpenGL context")
         
         self.width = width
         self.height = height
         
-        if not OPENGL_AVAILABLE:
+        # Check if window is using OpenGL
+        if not hasattr(window, 'is_using_opengl') or not window.is_using_opengl():
             print("OpenGL libraries not available, falling back to software rendering")
             return False
         
         try:
-            # Set up OpenGL context
-            pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MAJOR_VERSION, 3)
-            pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MINOR_VERSION, 3)
-            pygame.display.gl_set_attribute(pygame.GL_CONTEXT_PROFILE_MASK, pygame.GL_CONTEXT_PROFILE_CORE)
-            pygame.display.gl_set_attribute(pygame.GL_CONTEXT_FORWARD_COMPATIBLE_FLAG, 1)
-            
-            # Create OpenGL surface
-            pygame.display.set_mode((width, height), pygame.OPENGL | pygame.DOUBLEBUF)
-            
+            # Explicitly check if OpenGL functions are available
+            if not bool(glViewport) or not bool(glEnable) or not bool(glBlendFunc):
+                print("Critical OpenGL functions not available")
+                return False
+                
             # Initialize OpenGL state
             glViewport(0, 0, width, height)
             glEnable(GL_DEPTH_TEST)
             glEnable(GL_BLEND)
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
             
-            # Initialize shader manager
-            from .rendering.shader_manager import ShaderManager
-            self.shader_manager = ShaderManager()
+            # Detect advanced features
+            self._detect_features()
+            
+            # Initialize shader manager if shaders are supported
+            if self.features["shaders"]:
+                try:
+                    from .rendering.shader_manager import ShaderManager
+                    self.shader_manager = ShaderManager()
+                except Exception as e:
+                    print(f"Warning: Could not initialize ShaderManager: {e}")
+                    self.shader_manager = None
+                    self.features["shaders"] = False
             
             # Initialize texture manager (would be implemented in texture_manager.py)
             # self.texture_manager = TextureManager()
@@ -83,12 +98,55 @@ class OpenGLContext:
             self.active = True
             
             print("OpenGL initialized successfully")
+            print(f"Supported features: {', '.join([k for k, v in self.features.items() if v])}")
             return True
             
         except Exception as e:
             print(f"Error initializing OpenGL: {e}")
             self.active = False
             return False
+    
+    def _detect_features(self):
+        """Detect which OpenGL features are available"""
+        # Check shader support
+        try:
+            self.features["shaders"] = bool(glCreateShader) and bool(glShaderSource) and bool(glCompileShader)
+            if not self.features["shaders"]:
+                print("Warning: Shader functions like glCreateShader not available - advanced rendering will be disabled")
+        except (AttributeError, TypeError):
+            print("Warning: Shader functions not available - advanced rendering will be disabled")
+            self.features["shaders"] = False
+        
+        # Check framebuffer support
+        try:
+            self.features["framebuffers"] = bool(glGenFramebuffers) and bool(glBindFramebuffer) and bool(glFramebufferTexture2D)
+            if not self.features["framebuffers"]:
+                print("Warning: Framebuffer functions not available - water effects, post-processing will be disabled")
+        except (AttributeError, TypeError):
+            print("Warning: Framebuffer functions not available - water effects, post-processing will be disabled")
+            self.features["framebuffers"] = False
+        
+        # Check VAO support (needed for modern rendering)
+        try:
+            self.features["vao"] = bool(glGenVertexArrays) and bool(glBindVertexArray)
+            if not self.features["vao"]:
+                print("Warning: Vertex Array Objects not available - some rendering will be disabled")
+        except (AttributeError, TypeError):
+            print("Warning: Vertex Array Objects not available - some rendering will be disabled")
+            self.features["vao"] = False
+        
+        # Check instancing support
+        try:
+            self.features["instancing"] = bool(glVertexAttribDivisor) and bool(glDrawElementsInstanced)
+            if not self.features["instancing"]:
+                print("Warning: Instancing not available - performance will be affected")
+        except (AttributeError, TypeError):
+            print("Warning: Instancing not available - performance will be affected")
+            self.features["instancing"] = False
+    
+    def has_feature(self, feature_name):
+        """Check if a specific OpenGL feature is available"""
+        return self.active and self.features.get(feature_name, False)
             
     def resize(self, width, height):
         """
@@ -157,12 +215,12 @@ class Renderer:
         self.height = height
         self.screen = None
         self.gl_context = None
-        self.enable_debug_rendering = True
+        self.enable_debug_rendering = False
         
-    def initialize_gl(self, width, height):
+    def initialize_gl(self, width, height, window):
         """Initialize OpenGL context if possible."""
         self.gl_context = OpenGLContext()
-        success = self.gl_context.initialize(width, height)
+        success = self.gl_context.initialize(width, height, window)
         
         if not success:
             print("Using software rendering instead")
@@ -180,6 +238,12 @@ class Renderer:
             # Fall back to pygame clearing
             self.screen.fill((0, 0, 0))
             
+    def has_feature(self, feature_name):
+        """Check if the renderer supports a specific feature"""
+        if self.gl_context and self.gl_context.active:
+            return self.gl_context.has_feature(feature_name)
+        return False
+            
     def render_scene(self, scene):
         # Simple placeholder for rendering
         if not scene or not self.screen:
@@ -196,9 +260,14 @@ class Engine:
         # Ensure required directories exist
         self._ensure_directories()
         
-        # Create or use provided window
+        # Create or use provided window with OpenGL support if available
         if window is None:
-            self.window = Window(window_width, window_height, title)
+            # Try to create window with OpenGL support
+            try:
+                self.window = Window(window_width, window_height, title, use_opengl=True)
+            except Exception as e:
+                print(f"Error creating OpenGL window: {e}, falling back to software rendering")
+                self.window = Window(window_width, window_height, title, use_opengl=False)
         else:
             self.window = window
             window_width = window.width
@@ -210,13 +279,25 @@ class Engine:
         self.renderer = Renderer(window_width, window_height)
         self.renderer.set_screen(self.screen)
         
-        # Try to initialize OpenGL
-        self.using_opengl = self.renderer.initialize_gl(window_width, window_height)
+        # Try to initialize OpenGL using the existing window
+        self.using_opengl = self.renderer.initialize_gl(window_width, window_height, self.window)
+        
+        # Initialize the UI renderer
+        if self.using_opengl:
+            print("Initializing OpenGL UI renderer")
+            ui_renderer = get_ui_renderer(window_width, window_height)
+            if ui_renderer:
+                print("OpenGL UI renderer initialized successfully")
+                # Set debug mode if attribute exists
+                if hasattr(self, 'enable_debug_rendering'):
+                    ui_renderer.debug = self.enable_debug_rendering
+            else:
+                print("Failed to initialize OpenGL UI renderer")
         
         # ECS World
         from .ecs.world import World
         self.world = World()
-
+        
         # Physics system
         self.physics_system = PhysicsSystem()
         
@@ -232,8 +313,8 @@ class Engine:
         self.active_scene = None
         self.dt = 0  # Delta time
         
-        # DEBUG
-        self.enable_debug_rendering = True
+        # Debug settings
+        self.enable_debug_rendering = False  # Set to True to enable debug rendering
         
         # Default frame rate limit
         self.frame_rate = 60
@@ -392,20 +473,99 @@ class Engine:
         # Clear screen
         self.renderer.clear()
         
-        # Render game world
-        if self.active_scene and not self.menu_manager.is_menu_active:
-            self.active_scene.render(self.screen)
+        # Debug print rendering state
+        if self.enable_debug_rendering:
+            print(f"Engine render - OpenGL: {self.using_opengl}, Menu active: {self.menu_manager.is_menu_active}")
+        
+        # For OpenGL, we need to ensure proper state management between different rendering passes
+        if self.using_opengl:
+            try:
+                # Save some OpenGL states
+                previous_blend_state = glIsEnabled(GL_BLEND)
+                previous_depth_test_state = glIsEnabled(GL_DEPTH_TEST)
+                
+                # Setup for 3D game world rendering if needed
+                if self.active_scene and not self.menu_manager.is_menu_active:
+                    glEnable(GL_DEPTH_TEST)
+                
+                # Render game world
+                if self.active_scene and not self.menu_manager.is_menu_active:
+                    self.active_scene.render(self.screen)
+                    if self.enable_debug_rendering:
+                        print(f"Rendered active scene: {type(self.active_scene).__name__}")
+                    
+                    # Render HUD if in gameplay and HUD exists
+                    if hasattr(self.active_scene, 'hud') and self.active_scene.hud is not None:
+                        # Setup for HUD rendering
+                        glDisable(GL_DEPTH_TEST)
+                        glEnable(GL_BLEND)
+                        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                        
+                        self.active_scene.hud.draw(self.screen)
+                        if self.enable_debug_rendering:
+                            print("Rendered HUD")
+                
+                # Setup for UI rendering
+                glDisable(GL_DEPTH_TEST)
+                glEnable(GL_BLEND)
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                
+                # Render menus on top
+                if self.menu_manager.is_menu_active:
+                    if self.enable_debug_rendering:
+                        print(f"About to render menu: {type(self.menu_manager.get_active_menu()).__name__}")
+                    self.menu_manager.draw(self.screen)
+                    if self.enable_debug_rendering:
+                        print("Menu rendering completed")
+                
+                # Restore previous OpenGL states
+                if previous_blend_state:
+                    glEnable(GL_BLEND)
+                else:
+                    glDisable(GL_BLEND)
+                    
+                if previous_depth_test_state:
+                    glEnable(GL_DEPTH_TEST)
+                else:
+                    glDisable(GL_DEPTH_TEST)
+                
+            except Exception as e:
+                print(f"Error in OpenGL rendering: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            # Software rendering - simpler process
+            # Render game world
+            if self.active_scene and not self.menu_manager.is_menu_active:
+                self.active_scene.render(self.screen)
+                if self.enable_debug_rendering:
+                    print(f"Rendered active scene: {type(self.active_scene).__name__}")
             
             # Render HUD if in gameplay and HUD exists
             if hasattr(self.active_scene, 'hud') and self.active_scene.hud is not None:
                 self.active_scene.hud.draw(self.screen)
+                if self.enable_debug_rendering:
+                    print("Rendered HUD")
         
         # Render menus on top
         if self.menu_manager.is_menu_active:
-            self.menu_manager.draw(self.screen)
+                if self.enable_debug_rendering:
+                    print(f"About to render menu: {type(self.menu_manager.get_active_menu()).__name__}")
+                    self.menu_manager.draw(self.screen)
+                if self.enable_debug_rendering:
+                    print("Menu rendering completed")
         
         # Flip display buffer
-        pygame.display.flip()
+        if self.using_opengl:
+            # With OpenGL, use pygame.display.flip() to swap buffers
+            pygame.display.flip()
+            if self.enable_debug_rendering:
+                print("Swapped OpenGL buffers")
+        else:
+            # With software rendering, flip the display
+            pygame.display.flip()
+            if self.enable_debug_rendering:
+                print("Flipped pygame display")
     
     def process_events(self):
         """Process input events"""
@@ -490,23 +650,62 @@ class Engine:
         self.set_active_scene(game_scene)
     
     def load_game(self):
-        """Load a saved game"""
-        print("Loading saved game")
-        # In a real implementation, this would show a save selection screen
-        # For now, we'll just create a new game scene
+        """Load a saved game by showing the save browser menu"""
+        print("Opening save browser")
         
         # Close all menus
         self.menu_manager.clear_stack()
         
-        # Import GameScene lazily to avoid circular imports
-        from .scenes.game.game_scene import GameScene
+        try:
+            # Create and show the save browser menu
+            save_browser = SaveBrowserMenu(
+                width=self.window.width, 
+                height=self.window.height,
+                on_save_selected=self._on_save_selected,
+                on_cancel=self._on_load_cancelled
+            )
+            
+            # Push the save browser menu to the menu stack
+            self.menu_manager.push_menu(save_browser)
+        except Exception as e:
+            print(f"Error opening save browser: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _on_save_selected(self, save_data):
+        """Handle selecting a save file to load"""
+        print(f"Loading save: {save_data['name']} from {save_data['path']}")
         
-        # Create game scene
-        game_scene = GameScene(self.world, self.renderer, self.menu_manager)
+        # Close all menus
+        self.menu_manager.clear_stack()
         
-        # Set as active scene
-        self.set_active_scene(game_scene)
-    
+        try:
+            # Import GameScene lazily to avoid circular imports
+            from .scenes.game.game_scene import GameScene
+            
+            # Create game scene with loaded save data
+            game_scene = GameScene(self.world, self.renderer, self.menu_manager, save_data=save_data)
+            
+            # Set as active scene
+            self.set_active_scene(game_scene)
+        except Exception as e:
+            print(f"Error loading game from save: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # Go back to main menu
+            self._create_main_menu()
+
+    def _on_load_cancelled(self):
+        """Handle canceling the save browser"""
+        print("Load game cancelled")
+        
+        # Clear menu stack
+        self.menu_manager.clear_stack()
+        
+        # Return to main menu
+        self._create_main_menu()
+
     def show_pause_menu(self):
         """Show the pause menu"""
         from .ui.menus.pause_menu import PauseMenu
@@ -532,9 +731,54 @@ class Engine:
     def save_game(self):
         """Save the current game"""
         print("Saving game")
-        # In a real implementation, this would save the game state
-        # For now, just print a message
         
+        # Check if active scene has a save_game method
+        if self.active_scene and hasattr(self.active_scene, 'save_game'):
+            # Use the scene's save implementation
+            success = self.active_scene.save_game()
+            if success:
+                # Show a brief save confirmation message
+                # In a real game, you might use a toast notification system
+                print("Game saved successfully!")
+            return
+        
+        # Fallback implementation if scene doesn't have save functionality
+        # Get current timestamp for save file naming
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Get player entity and extract save data
+        # This is a simplified implementation
+        save_data = {
+            "timestamp": timestamp,
+            "player": {
+                "name": "Player",  # In real implementation, get from player entity
+                "level": 1,
+                "class": "Warrior"
+            },
+            "world": {
+                "location": "Town",
+                "time": "Day",
+                "quests": []
+            }
+        }
+        
+        # Create saves directory if it doesn't exist
+        save_dir = os.path.join(os.getcwd(), "saves")
+        os.makedirs(save_dir, exist_ok=True)
+        
+        # Generate save filename
+        character_name = save_data["player"]["name"]
+        save_filename = f"{character_name}_{timestamp}.json"
+        save_path = os.path.join(save_dir, save_filename)
+        
+        # Save the data to a JSON file
+        try:
+            with open(save_path, "w") as f:
+                json.dump(save_data, f, indent=2)
+            print(f"Game saved to {save_path}")
+        except Exception as e:
+            print(f"Error saving game: {e}")
+    
     def show_options(self):
         """Show the options menu"""
         print("Showing options menu")
@@ -606,13 +850,22 @@ class Engine:
         self.is_paused = is_paused
     
     def shutdown(self):
-        """Clean up resources before exit"""
-        # Clean up active scene
-        if self.active_scene:
-            self.active_scene.unload()
+        """Clean up resources before shutting down."""
+        print("Shutting down engine...")
+        
+        # Clean up UI renderer
+        ui_renderer = get_ui_renderer()
+        if ui_renderer and hasattr(ui_renderer, 'cleanup'):
+            print("Cleaning up OpenGL UI renderer...")
+            ui_renderer.cleanup()
+        
+        # Clean up OpenGL renderer
+        if self.renderer and hasattr(self.renderer, 'gl_context') and self.renderer.gl_context:
+            print("Cleaning up OpenGL context...")
+            self.renderer.gl_context.cleanup()
             
         # Close window
-        self.window.close()
+        if self.window:
+            self.window.close()
         
-        # Quit pygame
-        pygame.quit()
+        print("Engine shutdown complete")

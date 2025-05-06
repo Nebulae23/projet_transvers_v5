@@ -2,6 +2,8 @@
 
 import pygame
 import numpy as np
+import os
+import json
 from typing import Dict, List, Optional, Tuple, Any
 
 from ...ecs.world import World
@@ -36,7 +38,7 @@ class GameScene(Scene):
     Main game scene implementation with Octopath-inspired style (3D world, 2D entities).
     Integrates all major game systems: city, combat, weather, day/night cycle, etc.
     """
-    def __init__(self, world: World, renderer, ui_manager):
+    def __init__(self, world: World, renderer, ui_manager, save_data=None):
         """
         Initialize the game scene.
         
@@ -44,8 +46,12 @@ class GameScene(Scene):
             world (World): The ECS world instance.
             renderer (Renderer): The renderer instance.
             ui_manager (UIManager): The UI manager instance.
+            save_data (dict, optional): Save data to load from. If None, a new game is started.
         """
         super().__init__(world, renderer, ui_manager)
+        
+        # Store save data
+        self.save_data = save_data
         
         # Game systems
         self.city_manager = None
@@ -58,6 +64,9 @@ class GameScene(Scene):
         # Player entity
         self.player_entity_id = None
         self.player_position = np.zeros(2, dtype=float)
+        self.player_name = "Hero"
+        self.player_class = "Warrior"
+        self.player_level = 1
         
         # Camera
         self.camera_position = np.zeros(3, dtype=float)
@@ -91,6 +100,10 @@ class GameScene(Scene):
         """
         print("Initializing Game Scene")
         
+        # Parse save data if available
+        if self.save_data:
+            self._load_from_save()
+            
         # Initialize rendering systems
         self._init_rendering_systems()
         
@@ -112,6 +125,41 @@ class GameScene(Scene):
         
         print("Game Scene initialization complete")
 
+    def _load_from_save(self):
+        """Load game state from save data."""
+        if not self.save_data or not self.save_data.get("data"):
+            print("No valid save data provided")
+            return
+            
+        try:
+            save_data = self.save_data["data"]
+            
+            # Load player data
+            if "player" in save_data:
+                player_data = save_data["player"]
+                self.player_name = player_data.get("name", self.player_name)
+                self.player_class = player_data.get("class", self.player_class)
+                self.player_level = player_data.get("level", self.player_level)
+                
+                # Load player position if saved
+                if "position" in player_data:
+                    pos = player_data["position"]
+                    self.player_position = np.array([pos.get("x", 0), pos.get("y", 0)], dtype=float)
+            
+            # Load world data
+            if "world" in save_data:
+                world_data = save_data["world"]
+                self.current_area = world_data.get("location", self.current_area)
+                
+                # Other world data would be loaded here
+                
+            print(f"Loaded game data for {self.player_name}, a level {self.player_level} {self.player_class}")
+            
+        except Exception as e:
+            print(f"Error loading save data: {e}")
+            import traceback
+            traceback.print_exc()
+
     def _init_rendering_systems(self):
         """Initialize rendering systems for the game scene."""
         print("Initializing rendering systems")
@@ -120,7 +168,7 @@ class GameScene(Scene):
         self.billboard_system = BillboardSystem(self.renderer)
         
         # Initialize world renderer for 3D terrain and structures
-        self.world_renderer = WorldRenderer((self.renderer.width, self.renderer.height))
+        self.world_renderer = WorldRenderer((self.renderer.width, self.renderer.height), self.renderer)
         
         # Initialize effect system for particles and visual effects
         self.effect_system = EffectSystem()
@@ -170,19 +218,22 @@ class GameScene(Scene):
         player_entity = self.world.create_entity()
         self.player_entity_id = player_entity.id
         
-        # Set initial position
-        self.player_position = np.array([0, 0], dtype=float)
-        
         # Add components
         player_entity.add_component(Transform(position=self.player_position.copy()))
-        player_entity.add_component(Sprite(texture_path="assets/sprites/player.png"))
+        
+        # Choose sprite based on player class
+        sprite_path = f"assets/sprites/player/{self.player_class.lower()}.png"
+        if not os.path.exists(sprite_path):
+            sprite_path = "assets/sprites/player/default.png"
+            
+        player_entity.add_component(Sprite(texture_path=sprite_path))
         player_entity.add_component(Animation(frames=[], frame_duration=0.1))
         player_entity.add_component(PhysicsBody(mass=70.0))
         
         # Add player entity to scene's managed entities
         self.add_entity(self.player_entity_id)
         
-        print(f"Created player entity with ID: {self.player_entity_id}")
+        print(f"Created player entity '{self.player_name}' with ID: {self.player_entity_id}")
         
     def _init_ui(self):
         """Initialize UI elements for the game scene."""
@@ -190,7 +241,10 @@ class GameScene(Scene):
         self.hud = GameHUD(self.renderer.width, self.renderer.height)
         
         # Configure UI elements specific to game scene
-        
+        # Set player info in HUD
+        if hasattr(self.hud, 'set_player_info'):
+            self.hud.set_player_info(self.player_name, self.player_class, self.player_level)
+
     def _init_camera(self):
         """Initialize camera position and parameters."""
         # Set camera position above and behind player
@@ -508,18 +562,29 @@ class GameScene(Scene):
         Args:
             event: The pygame event to handle.
         """
+        # Check if event is a UI event with handled attribute
+        event_handled = False
+        
         # Handle UI input first
-        if self.hud and self.hud.handle_event(event):
+        if self.hud:
+            try:
+                if self.hud.handle_event(event):
+                    event_handled = True
+            except AttributeError:
+                # Handle case where event doesn't have expected attributes
+                pass
+        
+        if event_handled:
             return True
-            
+        
         # Handle player input
         if self._handle_player_input(event):
             return True
-            
+        
         # Handle camera controls
         if self._handle_camera_input(event):
             return True
-            
+        
         # Handle system-specific input
         
         # Default event handling
@@ -615,3 +680,56 @@ class GameScene(Scene):
         # Load area-specific resources
         
         # Update game systems for new area 
+
+    def save_game(self):
+        """Save the current game state."""
+        # Get current timestamp for save file naming
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Extract player entity data
+        player_entity = self.world.get_entity(self.player_entity_id)
+        player_pos = (0, 0)
+        
+        if player_entity:
+            transform = player_entity.get_component(Transform)
+            if transform:
+                player_pos = (transform.position[0], transform.position[1])
+        
+        # Create save data structure
+        save_data = {
+            "timestamp": timestamp,
+            "player": {
+                "name": self.player_name,
+                "level": self.player_level,
+                "class": self.player_class,
+                "position": {
+                    "x": player_pos[0],
+                    "y": player_pos[1]
+                }
+            },
+            "world": {
+                "location": self.current_area,
+                "time": self.debug_info.get("time_of_day", "day"),
+                "weather": self.debug_info.get("weather", "clear"),
+                "quests": []
+            }
+        }
+        
+        # Create saves directory if it doesn't exist
+        save_dir = os.path.join(os.getcwd(), "saves")
+        os.makedirs(save_dir, exist_ok=True)
+        
+        # Generate save filename
+        save_filename = f"{self.player_name}_{timestamp}.json"
+        save_path = os.path.join(save_dir, save_filename)
+        
+        # Save the data to a JSON file
+        try:
+            with open(save_path, "w") as f:
+                json.dump(save_data, f, indent=2)
+            print(f"Game saved to {save_path}")
+            return True
+        except Exception as e:
+            print(f"Error saving game: {e}")
+            return False 

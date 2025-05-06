@@ -73,6 +73,20 @@ class HD2DRenderer:
                 self.using_gl = False
                 return
                 
+            # Before loading resources, check if OpenGL context is actually valid
+            try:
+                # Try a simple GL operation to verify context
+                viewport = (GLint * 4)()
+                glGetIntegerv(GL_VIEWPORT, viewport)
+                if not all(viewport):
+                    print("OpenGL context not properly initialized, using fallback rendering")
+                    self.using_gl = False
+                    return
+            except Exception as e:
+                print(f"Error checking OpenGL context: {e}")
+                self.using_gl = False
+                return
+            
             # Load shader programs
             self._load_shaders()
             
@@ -215,6 +229,15 @@ class HD2DRenderer:
         # Ground
         ground_rect = pygame.Rect(0, height//2, width, height//2)
         pygame.draw.rect(self.fallback_surface, (40, 80, 40), ground_rect)
+        
+        # Add a "No OpenGL available" message
+        font = pygame.font.SysFont('Arial', 24)
+        if not font:
+            pygame.draw.rect(self.fallback_surface, (255, 0, 0), (width//2-100, height//2-20, 200, 40))
+        else:
+            text = font.render("Software Rendering Mode", True, (255, 255, 255))
+            text_rect = text.get_rect(center=(width//2, 30))
+            self.fallback_surface.blit(text, text_rect)
         
         # Draw grid on ground
         grid_size = 40

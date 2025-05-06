@@ -1,5 +1,5 @@
 # src/engine/combat/character_classes.py
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 import numpy as np

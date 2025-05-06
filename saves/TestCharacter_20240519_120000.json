@@ -1,0 +1,18 @@
+{
+  "timestamp": "20240519_120000",
+  "player": {
+    "name": "TestCharacter",
+    "level": 5,
+    "class": "Spellblade",
+    "position": {
+      "x": 100,
+      "y": 200
+    }
+  },
+  "world": {
+    "location": "Forest",
+    "time": "night",
+    "weather": "rain",
+    "quests": []
+  }
+} 
