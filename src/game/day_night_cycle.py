@@ -128,8 +128,9 @@ class DayNightCycle:
         self.fog = Fog("world_fog")
         self.fog.setColor(0.5, 0.5, 0.6)
         self.fog.setExpDensity(0.002)  # Low density by default
-        self.fog_np = self.game.render.attachNewNode(self.fog)
-        self.game.render.setFog(self.fog_np)
+        
+        # Apply fog to the render node
+        self.game.render.setFog(self.fog)
         
         # Store fog settings for each time of day
         self.fog_settings = {
@@ -314,14 +315,17 @@ class DayNightCycle:
         current_fog = self.fog_settings[self.time_of_day]
         next_fog = self.fog_settings[next_time] if next_time else current_fog
         
+        # Interpolate fog color
         fog_color = self.interpolate_color(
             current_fog["color"],
             next_fog["color"],
             self.transition_progress
         )
         
+        # Interpolate fog density
         fog_density = current_fog["density"] * (1 - self.transition_progress) + next_fog["density"] * self.transition_progress
         
+        # Apply fog settings
         self.fog.setColor(fog_color)
         self.fog.setExpDensity(fog_density)
         
