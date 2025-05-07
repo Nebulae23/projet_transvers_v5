@@ -146,12 +146,19 @@ class Player:
         # Update cooldowns
         self.update_cooldowns(dt)
         
+        # Update visibility based on time of day
+        self._update_visibility()
+        
         # Apply movement
         self.apply_movement(dt)
         
         # Update the model position
         self.root.setPos(self.position)
         self.root.setH(self.facing_angle)
+        
+        # Update effects display
+        if hasattr(self, 'effects_display'):
+            self.effects_display.update(dt)
         
         # Update debug visualization if needed
         if hasattr(self.game, 'debug_mode') and self.game.debug_mode:
@@ -580,4 +587,23 @@ class Player:
         else:
             inv_str = "empty"
         
-        return inv_str 
+        return inv_str
+
+    def _update_visibility(self):
+        """Update player's visibility based on time of day"""
+        # Default visibility range
+        self.visibility_range = 100.0
+        
+        # Check if day/night cycle is active
+        if hasattr(self.game, 'day_night_cycle'):
+            # Get visibility modifier from day/night cycle
+            self.visibility_range = self.game.day_night_cycle.get_visibility_distance()
+            
+            # Apply any player visibility bonuses/relics
+            if hasattr(self, 'visibility_bonus'):
+                self.visibility_range += self.visibility_bonus
+            
+            # Update vision-related game elements
+            if hasattr(self.game, 'fog') and hasattr(self.game.fog, 'setLinearRange'):
+                # If the game has fog with configurable range, update it
+                self.game.fog.setLinearRange(0, self.visibility_range) 

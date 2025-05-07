@@ -1,5 +1,23 @@
 # Nightfall Defenders: Recent Updates
 
+## Day/Night Cycle System
+- **Dynamic Lighting**: Realistic lighting changes reflecting time of day (dawn, day, dusk, night, midnight)
+- **Environmental Effects**: Atmospheric fog and visibility changes based on time of day
+- **Gameplay Impact**: Increased enemy spawns and strength during nighttime
+- **Enemy Visibility**: Enemies have reduced detection range at night, making stealth approaches viable
+- **Visual Indicators**: Sun/moon position and color changes to convey time
+- **Adjustable Cycle**: Configurable day length and time scale for testing
+- **Strategic Gameplay**: Forces players to prepare for more dangerous night combat
+- **Debug Display**: Visual time indicator and time controls in debug mode
+
+## Enemy Psychological System
+- **Confidence Levels**: Enemies now react differently based on player power (normal, hesitant, fearful, terrified, subservient)
+- **Dynamic Behavior**: Enemies may flee, pause before attacking, or even become allies depending on their psychological state
+- **Power Calculation**: System considers player level, weapon damage, health ratio, and city defense
+- **Visual Indicators**: Color-coded indicators and labels show enemy psychological state in debug mode
+- **Subservient Enemies**: Powerful players can turn enemies into allies that attack other enemies
+- **Proximity Effects**: Psychological impact increases when player is closer to enemies
+
 ## City Management System
 - **Building Construction**: Build and manage different structures to defend your city
 - **Strategic Placement**: Tactical placement of buildings for optimal defense
