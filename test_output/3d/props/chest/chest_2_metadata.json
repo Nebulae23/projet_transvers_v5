@@ -1,0 +1,18 @@
+{
+  "model_type": "prop",
+  "prop_type": "chest",
+  "procedural_params": {
+    "width": 1.1306975737693143,
+    "depth": 0.9259243392394634,
+    "height": 0.9717139857077496,
+    "material": "ornate",
+    "has_lock": false
+  },
+  "generated_at": 1746720935.5140703,
+  "format": "bam",
+  "vertices": 1154,
+  "triangles": 971,
+  "has_collision": true,
+  "has_textures": true,
+  "texture_resolution": "512x512"
+}

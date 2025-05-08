@@ -1,1 +1,0 @@
-# Motifs en spirale

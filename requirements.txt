@@ -1,8 +1,16 @@
 # requirements.txt
-PyOpenGL==3.1.7
-PyOpenGL-accelerate==3.1.7
-glfw==2.6.1
+panda3d==1.10.15
 numpy==1.24.3
+pillow==10.0.0
+scipy==1.10.1
+noise==1.2.2
+pyyaml==6.0
+tqdm==4.65.0
+colorama==0.4.6
+
+# Asset generation
+perlin-noise==1.12
+opencv-python==4.7.0.72
 
 # Testing Dependencies
 pytest==7.4.0

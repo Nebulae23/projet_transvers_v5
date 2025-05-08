@@ -1,0 +1,18 @@
+{
+  "model_type": "prop",
+  "prop_type": "sign",
+  "procedural_params": {
+    "height": 1.980428101292131,
+    "width": 1.3119060869852004,
+    "style": "wall",
+    "material": "wood",
+    "has_text": true
+  },
+  "generated_at": 1746720935.515455,
+  "format": "bam",
+  "vertices": 1575,
+  "triangles": 909,
+  "has_collision": true,
+  "has_textures": true,
+  "texture_resolution": "512x512"
+}

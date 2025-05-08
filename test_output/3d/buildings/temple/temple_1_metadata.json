@@ -1,0 +1,19 @@
+{
+  "model_type": "building",
+  "building_type": "temple",
+  "procedural_params": {
+    "width": 11.628719867283968,
+    "depth": 12.477066826841462,
+    "height": 6.292553937862984,
+    "style": "classical",
+    "columns": 5,
+    "material": "stone"
+  },
+  "generated_at": 1746720935.5044,
+  "format": "bam",
+  "vertices": 3801,
+  "triangles": 2156,
+  "has_collision": true,
+  "has_textures": true,
+  "texture_resolution": "1024x1024"
+}

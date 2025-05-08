@@ -1,0 +1,18 @@
+{
+  "model_type": "building",
+  "building_type": "tower",
+  "procedural_params": {
+    "width": 4.378793003516139,
+    "depth": 3.3214418012867744,
+    "height": 15.343060029726178,
+    "shape": "octagonal",
+    "material": "brick"
+  },
+  "generated_at": 1746720935.5065334,
+  "format": "bam",
+  "vertices": 3371,
+  "triangles": 2681,
+  "has_collision": true,
+  "has_textures": true,
+  "texture_resolution": "1024x1024"
+}

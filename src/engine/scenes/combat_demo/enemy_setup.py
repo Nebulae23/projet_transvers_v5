@@ -1,1 +1,0 @@
-# Génération d'ennemis de test pour la démo de combat

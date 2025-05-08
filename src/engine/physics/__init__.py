@@ -1,10 +1,23 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 """
-Physics System Module
-This package contains physics simulation functionality.
+Physics package for Nightfall Defenders
+Contains Verlet integration, cloth simulation, and physics management
 """
 
-try:
-    from .verlet_system import VerletSystem, VerletPoint, VerletStick, PhysicsSystem
-    from .collision_system import CollisionSystem, Collider, CircleCollider, AABBCollider, VerletCollider, CollisionLayer
-except ImportError as e:
-    print(f"Note: Some physics module components couldn't be imported: {e}") 
+from src.engine.physics.verlet import VerletSystem, VerletPoint, VerletConstraint, DistanceConstraint, AngleConstraint
+from src.engine.physics.cloth_system import ClothSystem
+from src.engine.physics.physics_manager import PhysicsManager, SpatialGrid, SpatialCell
+
+__all__ = [
+    'VerletSystem',
+    'VerletPoint',
+    'VerletConstraint',
+    'DistanceConstraint',
+    'AngleConstraint',
+    'ClothSystem',
+    'PhysicsManager',
+    'SpatialGrid',
+    'SpatialCell'
+] 

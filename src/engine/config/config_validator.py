@@ -1,1 +1,0 @@
-# Validation des paramètres de configuration

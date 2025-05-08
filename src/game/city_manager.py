@@ -50,6 +50,12 @@ class CityManager:
         # Visual representation of city boundaries
         self.boundary_marker = None
         
+        # City sections and walls for fog damage
+        self.sections = []
+        self.walls = []
+        self.fog_protection = 0.0  # 0.0 to 1.0 scale (0 = no protection, 1 = full protection)
+        self.fog_damage_timer = 0.0
+        
         # Initialize city representation
         self._initialize_city_visuals()
         
@@ -80,6 +86,17 @@ class CityManager:
                 marker.setScale(0.5, 0.5, 1.5)
                 marker.setPos(x1, y1, 0)
                 marker.reparentTo(self.boundary_marker)
+                
+                # Add to city sections
+                self.sections.append({
+                    'position': Vec3(x1, y1, 0),
+                    'angle': angle1,
+                    'health': 100,
+                    'max_health': 100,
+                    'marker': marker,
+                    'protected': False,
+                    'wall': None
+                })
         
     def update(self, dt):
         """
@@ -102,6 +119,9 @@ class CityManager:
         
         # Check for city level ups
         self._check_level_up()
+        
+        # Update fog damage timer
+        self._update_fog_protection(dt)
         
     def _update_food(self, dt):
         """
@@ -202,31 +222,30 @@ class CityManager:
             self.level_up()
             
     def level_up(self):
-        """Level up the city"""
+        """Level up the city and improve its stats"""
         self.city_level += 1
         self.city_exp -= self.exp_to_next_level
+        self.exp_to_next_level = int(self.exp_to_next_level * 1.5)  # Increase XP needed for next level
         
-        # Increase city stats with level
-        self.city_radius += 5.0
-        self.detection_range += 5
+        # Improve city stats
+        self.defense += 5
+        self.detection_range += 2
+        self.max_defenders += 1
+        self.food_production += 1
+        self.healing_rate += 0.5
         
-        # Increase experience required for next level
-        self.exp_to_next_level = int(self.exp_to_next_level * 1.5)
-        
-        # Update city visuals to reflect new size
+        # Update visuals
         self._update_city_visuals()
         
-        # Show level up message
         print(f"City leveled up to level {self.city_level}!")
         
     def _update_city_visuals(self):
-        """Update city visuals based on current size and level"""
-        # Remove old boundary
-        if self.boundary_marker:
-            self.boundary_marker.removeNode()
-            
-        # Create new boundary with updated radius
-        self._initialize_city_visuals()
+        """Update city visuals based on current level"""
+        # For now, just scale the city boundary markers based on level
+        scale_factor = 1.0 + (self.city_level - 1) * 0.1
+        
+        for child in self.boundary_marker.getChildren():
+            child.setScale(0.5 * scale_factor, 0.5 * scale_factor, 1.5 * scale_factor)
         
     def add_city_exp(self, amount):
         """
@@ -243,74 +262,244 @@ class CityManager:
         Check if a position is inside the city boundaries
         
         Args:
-            position: The position to check (Vec3)
+            position: The position to check
             
         Returns:
-            bool: True if inside city, False otherwise
+            bool: True if position is inside city, False otherwise
         """
+        # Simple distance check for now
         distance = (position - self.city_center).length()
-        return distance <= self.city_radius
+        return distance < self.city_radius
         
     def set_city_center(self, position):
         """
-        Set city center position
+        Set the city center position
         
         Args:
-            position: The new city center position (Vec3)
+            position: The new city center position
         """
-        self.city_center = position
-        self._update_city_visuals()
+        self.city_center = Vec3(position)
+        if self.boundary_marker:
+            self.boundary_marker.setPos(self.city_center)
+            
+        print(f"City center set to {self.city_center}")
         
     def add_defender(self):
         """
         Add a defender to the city
         
         Returns:
-            bool: True if defender added, False if max reached
+            bool: True if defender added successfully, False otherwise
         """
         if self.current_defenders < self.max_defenders:
             self.current_defenders += 1
+            print(f"Defender added. Current defenders: {self.current_defenders}/{self.max_defenders}")
             return True
-        return False
+        else:
+            print(f"Cannot add defender. Already at maximum ({self.max_defenders}).")
+            return False
         
     def remove_defender(self):
         """
         Remove a defender from the city
         
         Returns:
-            bool: True if defender removed, False if none to remove
+            bool: True if defender removed successfully, False otherwise
         """
         if self.current_defenders > 0:
             self.current_defenders -= 1
+            print(f"Defender removed. Current defenders: {self.current_defenders}/{self.max_defenders}")
             return True
-        return False
+        else:
+            print("Cannot remove defender. No defenders left.")
+            return False
         
     def get_city_stats(self):
         """
-        Get current city stats
+        Get city statistics
         
         Returns:
             dict: Dictionary of city stats
         """
         return {
-            "level": self.city_level,
-            "exp": self.city_exp,
-            "exp_to_next": self.exp_to_next_level,
-            "defense": self.defense,
-            "detection_range": self.detection_range,
-            "max_defenders": self.max_defenders,
-            "current_defenders": self.current_defenders,
-            "food_production": self.food_production,
-            "food_storage": int(self.food_storage),
-            "healing_rate": self.healing_rate
+            'level': self.city_level,
+            'exp': self.city_exp,
+            'exp_to_next_level': self.exp_to_next_level,
+            'defense': self.defense,
+            'detection_range': self.detection_range,
+            'max_defenders': self.max_defenders,
+            'current_defenders': self.current_defenders,
+            'food_production': self.food_production,
+            'food_storage': int(self.food_storage),
+            'healing_rate': self.healing_rate,
+            'fog_protection': int(self.fog_protection * 100)
         }
         
     def calculate_defense_bonus(self):
         """
-        Calculate defense bonus for player
+        Calculate defense bonus for player when in the city
         
         Returns:
-            float: Defense bonus percentage
+            float: Defense bonus multiplier (1.0 = no bonus, >1.0 = bonus)
         """
-        # Base defense is 0%, increases with city level and buildings
-        return self.defense / 100.0  # Convert to percentage 
+        base_bonus = 1.0 + (self.defense / 100.0)  # Each defense point gives 1% bonus
+        return base_bonus
+        
+    def _update_fog_protection(self, dt):
+        """
+        Update fog protection status and handle damage
+        
+        Args:
+            dt: Delta time in seconds
+        """
+        # Update protection level based on walls and other defenses
+        total_sections = len(self.sections)
+        protected_sections = sum(1 for section in self.sections if section['protected'])
+        
+        if total_sections > 0:
+            self.fog_protection = protected_sections / total_sections
+        else:
+            self.fog_protection = 0.0
+            
+        # Update visual indicators for protection
+        for section in self.sections:
+            if section['protected']:
+                # Add blue glow or indicator
+                section['marker'].setColor(0.2, 0.4, 0.8, 1.0)
+            else:
+                # Normal color
+                section['marker'].setColor(0.6, 0.6, 0.6, 1.0)
+        
+    def apply_fog_damage(self, damage):
+        """
+        Apply damage from fog to unprotected city sections
+        
+        Args:
+            damage: Base damage amount
+            
+        Returns:
+            float: Actual damage applied
+        """
+        # Only apply damage if there's fog
+        if not hasattr(self.game, 'night_fog') or not self.game.night_fog.active:
+            return 0.0
+            
+        # Reduce damage based on fog protection
+        actual_damage = damage * (1.0 - self.fog_protection)
+        
+        # Apply damage to unprotected sections
+        for section in self.sections:
+            if not section['protected']:
+                section['health'] -= actual_damage
+                
+                # Clamp health
+                section['health'] = max(0, section['health'])
+                
+                # Visual indicator of damage
+                damage_factor = section['health'] / section['max_health']
+                if damage_factor < 0.3:
+                    # Severely damaged
+                    section['marker'].setColor(0.8, 0.2, 0.2, 1.0)
+                elif damage_factor < 0.7:
+                    # Moderately damaged
+                    section['marker'].setColor(0.8, 0.6, 0.2, 1.0)
+                
+        # Show message if significant damage
+        if actual_damage > 5:
+            self.show_fog_damage_warning(actual_damage)
+            
+        return actual_damage
+        
+    def show_fog_damage_warning(self, damage):
+        """
+        Show a warning about fog damage
+        
+        Args:
+            damage: Damage amount
+        """
+        if hasattr(self.game, 'show_message'):
+            self.game.show_message(f"Night fog damaging city! ({int(damage)} damage)")
+        else:
+            print(f"City taking {int(damage)} damage from night fog!")
+        
+    def add_wall(self, position, angle):
+        """
+        Add a wall to protect a city section
+        
+        Args:
+            position: Position to place wall
+            angle: Wall orientation angle
+            
+        Returns:
+            bool: True if wall added successfully
+        """
+        # Find the nearest section
+        nearest_section = None
+        nearest_distance = float('inf')
+        
+        for section in self.sections:
+            distance = (section['position'] - position).length()
+            if distance < nearest_distance:
+                nearest_distance = distance
+                nearest_section = section
+                
+        # If section is close enough, add wall
+        if nearest_section and nearest_distance < 5.0:
+            if nearest_section['wall'] is None:
+                # Create wall
+                wall = self.game.loader.loadModel("models/box")
+                wall.setScale(4, 0.5, 2)
+                wall.setH(math.degrees(angle))
+                wall.setPos(position)
+                wall.setColor(0.4, 0.4, 0.6, 1.0)
+                wall.reparentTo(self.game.render)
+                
+                # Mark section as protected
+                nearest_section['protected'] = True
+                nearest_section['wall'] = wall
+                
+                # Add to walls list
+                self.walls.append(wall)
+                
+                # Update fog protection
+                self._update_fog_protection(0)
+                
+                return True
+                
+        return False
+        
+    def repair_section(self, position):
+        """
+        Repair a damaged city section
+        
+        Args:
+            position: Position near the section to repair
+            
+        Returns:
+            bool: True if repair successful
+        """
+        # Find the nearest section
+        nearest_section = None
+        nearest_distance = float('inf')
+        
+        for section in self.sections:
+            distance = (section['position'] - position).length()
+            if distance < nearest_distance:
+                nearest_distance = distance
+                nearest_section = section
+                
+        # If section is close enough and damaged, repair it
+        if nearest_section and nearest_distance < 5.0:
+            if nearest_section['health'] < nearest_section['max_health']:
+                # Repair to full health
+                nearest_section['health'] = nearest_section['max_health']
+                
+                # Reset color
+                if nearest_section['protected']:
+                    nearest_section['marker'].setColor(0.2, 0.4, 0.8, 1.0)
+                else:
+                    nearest_section['marker'].setColor(0.6, 0.6, 0.6, 1.0)
+                
+                return True
+                
+        return False 

@@ -168,31 +168,68 @@ class DayNightCycle:
             self.filter_quad = NodePath(self.filter_cm.generate())
             
             # Load the shader
-            shader_path = "src/assets/shaders/day_night_filter.glsl"
-            if os.path.exists(shader_path):
-                self.filter_shader = Shader.load(Shader.SL_Cg, 
-                                              vertex=shader_path,
-                                              fragment=shader_path)
-                
-                # Apply the shader
-                self.filter_quad.setShader(self.filter_shader)
-                
-                # Set up initial shader parameters
-                self.filter_quad.setShaderInput("day_tint", (1.0, 1.0, 1.0, 1.0))
-                self.filter_quad.setShaderInput("night_tint", (0.6, 0.7, 1.0, 1.0))
-                self.filter_quad.setShaderInput("blend_factor", 0.0)
-                
-                # Add the filter to the render pipeline
-                self.filter_quad.reparentTo(self.game.render2d)
-                
-                # Make sure it's rendered after everything else
-                self.filter_quad.setBin("fixed", 100)
-                
-                print("Day/night shader filter applied successfully")
-                self.has_shader = True
+            vertex_path = "src/assets/shaders/day_night_filter.vert"
+            fragment_path = "src/assets/shaders/day_night_filter.frag"
+            
+            if os.path.exists(vertex_path) and os.path.exists(fragment_path):
+                # Load from files
+                self.filter_shader = Shader.load(Shader.SL_GLSL, 
+                                              vertex=vertex_path,
+                                              fragment=fragment_path)
+                print("Day/night shader loaded from files")
             else:
-                print(f"Shader file not found: {shader_path}")
-                self.has_shader = False
+                # Create inline shader as fallback
+                self.filter_shader = Shader.make(Shader.SL_GLSL,
+                    """
+                    #version 330
+                    
+                    uniform mat4 p3d_ModelViewProjectionMatrix;
+                    in vec4 p3d_Vertex;
+                    in vec2 p3d_MultiTexCoord0;
+                    out vec2 texcoord;
+                    
+                    void main() {
+                        gl_Position = p3d_ModelViewProjectionMatrix * p3d_Vertex;
+                        texcoord = p3d_MultiTexCoord0;
+                    }
+                    """,
+                    """
+                    #version 330
+                    
+                    uniform sampler2D p3d_Texture0;
+                    uniform vec4 day_tint;
+                    uniform vec4 night_tint;
+                    uniform float blend_factor;
+                    in vec2 texcoord;
+                    out vec4 fragColor;
+                    
+                    void main() {
+                        vec4 color = texture(p3d_Texture0, texcoord);
+                        vec4 tinted = mix(color * day_tint, color * night_tint, blend_factor);
+                        fragColor = tinted;
+                    }
+                    """
+                )
+                print("Using fallback day/night shader")
+                
+            # Apply the shader
+            self.filter_quad.setShader(self.filter_shader)
+            
+            # Set up initial shader parameters
+            self.filter_quad.setShaderInput("day_tint", (1.0, 1.0, 1.0, 1.0))
+            self.filter_quad.setShaderInput("night_tint", (0.6, 0.7, 1.0, 1.0))
+            self.filter_quad.setShaderInput("blend_factor", 0.0)
+            self.filter_quad.setShaderInput("fog_density", 0.8)
+            self.filter_quad.setShaderInput("fog_distance", 0.3)
+            
+            # Add the filter to the render pipeline
+            self.filter_quad.reparentTo(self.game.render2d)
+            
+            # Make sure it's rendered after everything else
+            self.filter_quad.setBin("fixed", 100)
+            
+            print("Day/night shader filter applied successfully")
+            self.has_shader = True
         except Exception as e:
             print(f"Could not set up day/night shader filter: {e}")
             self.has_shader = False
@@ -330,25 +367,57 @@ class DayNightCycle:
         self.fog.setExpDensity(fog_density)
         
         # Update shader filter if available
-        if hasattr(self, 'has_shader') and self.has_shader:
-            # Calculate shader blend factor:
-            # 0.0 = full day
-            # 1.0 = full night
-            shader_blend = 0.0
+        if self.has_shader:
+            # Calculate day/night blend factor
+            blend_factor = 0.0
             
-            if self.time_of_day == TimeOfDay.DAY:
-                shader_blend = 0.0
-            elif self.time_of_day == TimeOfDay.DAWN:
-                shader_blend = 0.3 * (1.0 - self.transition_progress)
-            elif self.time_of_day == TimeOfDay.DUSK:
-                shader_blend = 0.3 + (0.7 * self.transition_progress)
-            elif self.time_of_day == TimeOfDay.NIGHT:
-                shader_blend = 0.7 + (0.3 * self.transition_progress)
+            if self.time_of_day == TimeOfDay.NIGHT:
+                blend_factor = 0.7 + 0.3 * self.transition_progress
             elif self.time_of_day == TimeOfDay.MIDNIGHT:
-                shader_blend = 1.0
-                
-            # Update shader parameter
-            self.filter_quad.setShaderInput("blend_factor", shader_blend)
+                blend_factor = 1.0
+            elif self.time_of_day == TimeOfDay.DAWN:
+                blend_factor = 0.7 * (1.0 - self.transition_progress)
+            elif self.time_of_day == TimeOfDay.DUSK:
+                blend_factor = 0.7 * self.transition_progress
+            
+            # Apply the blend factor to the shader
+            self.filter_quad.setShaderInput("blend_factor", blend_factor)
+            
+            # Update fog density based on time of day
+            fog_density = 0.8  # Default
+            if self.time_of_day == TimeOfDay.MIDNIGHT:
+                fog_density = 1.2
+            elif self.time_of_day == TimeOfDay.NIGHT:
+                fog_density = 0.8 + 0.4 * self.transition_progress
+            elif self.time_of_day == TimeOfDay.DAWN:
+                fog_density = 0.8 * (1.0 - self.transition_progress)
+            elif self.time_of_day == TimeOfDay.DUSK:
+                fog_density = 0.8 * self.transition_progress
+            
+            self.filter_quad.setShaderInput("fog_density", fog_density)
+            
+            # Update day/night tint colors
+            current_time_settings = self.light_settings[self.time_of_day]
+            next_time = self._get_next_time_of_day()
+            next_time_settings = self.light_settings[next_time]
+            
+            day_tint = Vec4(1.0, 1.0, 1.0, 1.0)
+            night_tint = Vec4(0.6, 0.7, 1.0, 1.0)
+            
+            if self.time_of_day == TimeOfDay.DAWN:
+                day_tint = Vec4(1.0, 0.9, 0.8, 1.0)  # Golden sunrise
+            elif self.time_of_day == TimeOfDay.DAY:
+                day_tint = Vec4(1.0, 1.0, 1.0, 1.0)  # Neutral daylight
+            elif self.time_of_day == TimeOfDay.DUSK:
+                day_tint = Vec4(1.0, 0.8, 0.7, 1.0)  # Orange sunset
+            
+            if self.time_of_day == TimeOfDay.NIGHT:
+                night_tint = Vec4(0.6, 0.7, 0.9, 1.0)  # Blue moonlight
+            elif self.time_of_day == TimeOfDay.MIDNIGHT:
+                night_tint = Vec4(0.4, 0.5, 0.8, 1.0)  # Deep blue night
+            
+            self.filter_quad.setShaderInput("day_tint", day_tint)
+            self.filter_quad.setShaderInput("night_tint", night_tint)
     
     def update_gameplay_modifiers(self):
         """Update gameplay modifiers based on time of day"""
@@ -436,7 +505,7 @@ class DayNightCycle:
             vec1: First vector (Vec3)
             vec2: Second vector (Vec3)
             t: Interpolation factor (0-1)
-            
+        
         Returns:
             Vec3: Interpolated vector
         """

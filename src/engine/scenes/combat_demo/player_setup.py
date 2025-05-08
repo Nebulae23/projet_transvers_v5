@@ -1,1 +1,0 @@
-# Configuration des capacités du joueur pour la démo de combat

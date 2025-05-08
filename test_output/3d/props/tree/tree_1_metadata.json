@@ -1,0 +1,18 @@
+{
+  "model_type": "prop",
+  "prop_type": "tree",
+  "procedural_params": {
+    "height": 10.087478331253658,
+    "trunk_radius": 0.4130387785868079,
+    "canopy_radius": 4.981073095382563,
+    "species": "oak",
+    "leaf_density": 0.907711538120216
+  },
+  "generated_at": 1746720935.5087333,
+  "format": "bam",
+  "vertices": 330,
+  "triangles": 291,
+  "has_collision": true,
+  "has_textures": true,
+  "texture_resolution": "512x512"
+}

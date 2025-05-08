@@ -1,0 +1,19 @@
+{
+  "model_type": "building",
+  "building_type": "shop",
+  "procedural_params": {
+    "width": 10.684234654493899,
+    "depth": 8.626559560989072,
+    "height": 3.2714961651385837,
+    "storefront": true,
+    "sign": true,
+    "material": "wood"
+  },
+  "generated_at": 1746720935.5020053,
+  "format": "bam",
+  "vertices": 2682,
+  "triangles": 332,
+  "has_collision": true,
+  "has_textures": true,
+  "texture_resolution": "1024x1024"
+}

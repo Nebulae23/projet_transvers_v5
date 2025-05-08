@@ -8,8 +8,11 @@ Implements the core game loop and initializes game systems
 
 import os
 import sys
+import argparse
 from direct.showbase.ShowBase import ShowBase
 from panda3d.core import loadPrcFileData, WindowProperties, Vec3, ConfigVariableBool
+
+from game.character_class import ClassManager
 
 # Ensure the src directory is in the path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -23,9 +26,11 @@ from engine.resource_manager import ResourceManager
 from engine.renderer import Renderer
 from engine.input_manager import InputManager
 from engine.scene_manager import SceneManager
+from engine.save_manager import SaveManager
+from engine.ui.ui_manager import UIManager
 
 # Import game modules
-from game.day_night_cycle import DayNightCycle
+from game.day_night_cycle import DayNightCycle, TimeOfDay
 from game.camera_controller import CameraController
 from game.entity_manager import EntityManager
 from game.crafting_system import CraftingSystem
@@ -35,12 +40,23 @@ from game.relic_ui import RelicUI
 from game.building_system import BuildingSystem
 from game.building_ui import BuildingUI
 from game.city_manager import CityManager
+from game.night_fog import NightFog
+from game.adaptive_difficulty import AdaptiveDifficultySystem, DifficultyPreset
+from game.performance_tracker import PerformanceTracker
+from game.difficulty_settings import DifficultySettings
+from game.class_selection_ui import ClassSelectionUI
+from game.secondary_abilities import SecondaryAbilityManager
 
 class NightfallDefenders(ShowBase):
     """Main game class that extends Panda3D's ShowBase"""
     
-    def __init__(self):
-        """Initialize the game"""
+    def __init__(self, enable_adaptive_difficulty=False):
+        """
+        Initialize the game
+        
+        Args:
+            enable_adaptive_difficulty: Whether to enable adaptive difficulty system
+        """
         # Configure Panda3D settings first
         self._configure_panda3d()
         
@@ -59,11 +75,20 @@ class NightfallDefenders(ShowBase):
         self.scene_manager = SceneManager(self)
         self.renderer = Renderer(self)
         
+        # Add the UI Manager
+        self.ui_manager = UIManager(self)
+        
+        # Add the Save Manager
+        self.save_manager = SaveManager(self)
+        
         # Initialize game-specific systems
         self.game_time = 0
         self.entity_manager = EntityManager(self)
         self.day_night_cycle = DayNightCycle(self)
         self.camera_controller = CameraController(self)
+        
+        # Initialize the class system
+        self.class_manager = ClassManager()
         
         # Create player
         self.player = None
@@ -82,14 +107,33 @@ class NightfallDefenders(ShowBase):
         self.building_system = BuildingSystem(self)
         self.building_ui = BuildingUI(self)
         
+        # Create the night fog system
+        self.night_fog = NightFog(self)
+        
+        # Create the class selection UI
+        self.class_selection_ui = ClassSelectionUI(self)
+        
+        # Create secondary abilities system
+        # The secondary ability manager will be initialized when the player is created
+        
+        # Create the adaptive difficulty system if enabled
+        if enable_adaptive_difficulty:
+            self.adaptive_difficulty_system = AdaptiveDifficultySystem(self)
+            self.performance_tracker = PerformanceTracker(self)
+            self.difficulty_settings = DifficultySettings(self)
+            print("Adaptive Difficulty System enabled.")
+        
+        # Track play time
+        self.play_time = 0
+        
+        # Set up the game world
+        self._setup_world()
+        
         # Populate the world with resources
         self._populate_world()
         
         # Set up key bindings
         self._setup_key_bindings()
-        
-        # Set up the game world
-        self._setup_world()
         
         # Initialize UI components
         self._setup_ui()
@@ -101,11 +145,17 @@ class NightfallDefenders(ShowBase):
         # Debug settings
         self.debug_display_enabled = False
         
+        # Register our custom scenes
+        self._register_scenes()
+        
         # Add the update task
         self.task_mgr.add(self._update, "update_task")
         
         # Show controls help
         self.setup_help_text()
+        
+        # Start with the main menu
+        self.scene_manager.change_scene("main_menu")
         
         # Print startup message
         print("Nightfall Defenders initialized successfully!")
@@ -153,11 +203,17 @@ class NightfallDefenders(ShowBase):
         # Game controls
         self.accept("escape", self.cleanup_and_exit)
         self.accept("f1", self.toggle_debug_display)
+        self.accept("t", self.toggle_day_night)  # Toggle day/night cycle
+        self.accept("f", self.toggle_fog)  # Toggle fog (debug)
         
         # UI controls
         self.accept("c", self.toggle_crafting_ui)
         self.accept("r", self.toggle_relic_ui)
         self.accept("b", self.toggle_building_ui)
+        
+        # Add difficulty settings toggle if adaptive difficulty is enabled
+        if hasattr(self, 'difficulty_settings'):
+            self.accept("o", self.toggle_difficulty_settings)  # Show difficulty settings
         
     def _setup_world(self):
         """Set up the game world"""
@@ -276,10 +332,12 @@ class NightfallDefenders(ShowBase):
         ambient_light_np = self.render.attachNewNode(ambient_light)
         self.render.setLight(ambient_light_np)
         
-        # Store lighting references for day/night cycle
-        self.day_night_cycle.main_light = main_light
-        self.day_night_cycle.main_light_np = main_light_np
-        self.day_night_cycle.ambient_light = ambient_light
+        # The day/night cycle system manages lighting now
+        # No need to store references as the system creates its own lights
+        # Remove the following lines when the new system is integrated
+        # self.day_night_cycle.main_light = main_light
+        # self.day_night_cycle.main_light_np = main_light_np
+        # self.day_night_cycle.ambient_light = ambient_light
     
     def _setup_ui(self):
         """Set up the game's UI components"""
@@ -302,114 +360,132 @@ class NightfallDefenders(ShowBase):
         )
         self.message_text.hide()
     
+    def _register_scenes(self):
+        """Register game scenes with the scene manager"""
+        from game.main_menu import MainMenuScene
+        
+        # Main menu scene
+        self.scene_manager.add_scene("main_menu", MainMenuScene(self))
+        
+        # Game scenes already registered through scene_manager
+    
     def _update(self, task):
-        """Main game update loop"""
-        # First time initialization
-        if not hasattr(task, 'last'):
-            task.last = 0
-            
-        # Calculate delta time
-        dt = task.time - task.last
-        task.last = task.time
+        """
+        Update game state
         
-        # Cap dt to prevent physics issues on lag spikes
-        if dt > 0.1:
-            dt = 0.1
+        Args:
+            task: Task object from Panda3D
             
-        # Update game time
-        self.game_time += dt
+        Returns:
+            Task continuation constant
+        """
+        # Get delta time
+        dt = globalClock.getDt()
         
-        # Update systems
-        self.day_night_cycle.update(dt)
-        self.entity_manager.update(dt)
-        self.camera_controller.update(dt)
-        self.crafting_system.update(dt)
-        self.relic_system.update(dt)
-        self.building_system.update(dt)
-        self.city_manager.update(dt)
+        # Update play time if not paused and in the game scene
+        if not self.paused and self.scene_manager.current_scene_name == "game":
+            self.play_time += dt
         
-        # Update UIs
-        if hasattr(self, 'crafting_ui') and self.crafting_ui.visible:
-            self.crafting_ui.update(dt)
+        # Update game systems
+        if not self.paused:
+            # Update the scene manager
+            self.scene_manager.update(dt)
             
-        if hasattr(self, 'relic_ui') and self.relic_ui.visible:
-            self.relic_ui.update(dt)
-            
-        if hasattr(self, 'building_ui') and self.building_ui.visible:
-            self.building_ui.update(dt)
-            
-        # Update debug display
-        if self.debug_mode:
+            # Update other systems only if in game scene
+            if self.scene_manager.current_scene_name == "game":
+                # Update day/night cycle
+                self.day_night_cycle.update(dt)
+                
+                # Update entities
+                self.entity_manager.update(dt)
+                
+                # Update camera
+                self.camera_controller.update(dt)
+                
+                # Check for autosave trigger (e.g., at dawn)
+                if hasattr(self, 'day_night_cycle') and self.day_night_cycle.time_of_day == 'dawn':
+                    # Only autosave once per day
+                    if not getattr(self, '_last_autosave_day', None) == self.day_night_cycle.day:
+                        self._trigger_autosave()
+                        self._last_autosave_day = self.day_night_cycle.day
+        
+        # Always update debug info if enabled
+        if self.debug_display_enabled:
             self._update_debug_info()
         
         return task.cont
     
+    def _trigger_autosave(self):
+        """Trigger an autosave"""
+        if hasattr(self, 'save_manager'):
+            self.save_manager.autosave()
+            
+            # Show message to player
+            self.show_message("Game autosaved")
+    
     def _update_debug_info(self):
-        """Update debug information display"""
-        fps = round(globalClock.getAverageFrameRate(), 1)
-        time_of_day = self.day_night_cycle.get_time_of_day_string()
-        day_phase = self.day_night_cycle.get_day_phase()
-        day_num = self.day_night_cycle.day
+        """Update debugging information display"""
+        if not hasattr(self, 'debug_text'):
+            return
         
-        # Entity counts
-        entity_info = self.entity_manager.get_debug_info()
+        # Player info
+        player_pos = "N/A"
+        player_health = "N/A"
+        player_level = "N/A"
         
-        debug_text = f"FPS: {fps}\n"
-        debug_text += f"Day: {day_num}, Time: {time_of_day} ({day_phase})\n"
-        debug_text += f"Camera Mode: {self.camera_controller.current_mode}\n"
-        debug_text += f"Camera Pos: {self.camera.getPos()}\n"
-        debug_text += f"Entities: {len(self.entity_manager.entities)} "
-        debug_text += f"(Enemies: {entity_info['enemy_count']}, "
-        debug_text += f"Projectiles: {entity_info['projectile_count']}, "
-        debug_text += f"Resources: {entity_info['resource_node_count'] + entity_info['resource_drop_count']})\n"
-        
-        # Player stats
         if self.player:
-            health_percent = int((self.player.health / self.player.max_health) * 100)
-            stamina_percent = int((self.player.stamina / self.player.max_stamina) * 100)
-            weapon_type = self.player.projectile_type
+            player_pos = f"({self.player.position.x:.1f}, {self.player.position.y:.1f}, {self.player.position.z:.1f})"
+            player_health = f"{self.player.health}/{self.player.max_health}"
+            player_level = f"{self.player.level}"
+        
+        # Game state info
+        time_of_day = self.day_night_cycle.get_time_of_day_name()
+        game_time = f"{int(self.day_night_cycle.current_time / 60):02d}:{int(self.day_night_cycle.current_time % 60):02d}"
+        
+        # Entities info
+        entity_count = len(self.entity_manager.entities)
+        enemy_count = len(self.entity_manager.enemies)
+        projectile_count = len(self.entity_manager.projectiles)
+        
+        # FPS info
+        fps = globalClock.getAverageFrameRate()
+        
+        # City info
+        city_health = "N/A"
+        city_defense = "N/A"
+        
+        if hasattr(self, 'city_manager'):
+            city_defense = f"{self.city_manager.defense:.1f}"
             
-            debug_text += f"Player Pos: {self.player.position}\n"
-            debug_text += f"Health: {self.player.health}/{self.player.max_health} ({health_percent}%)\n"
-            debug_text += f"Stamina: {self.player.stamina}/{self.player.max_stamina} ({stamina_percent}%)\n"
-            debug_text += f"Level: {self.player.level} - XP: {self.player.experience}/{self.player.experience_to_next_level} "
-            debug_text += f"({int(self.player.get_experience_percent())}%)\n"
-            debug_text += f"Weapon: {self.player.projectile_types[weapon_type]['name']} "
-            debug_text += f"(Dmg: {self.player.projectile_types[weapon_type]['damage']})\n"
-            debug_text += f"Inventory: {self.player.get_inventory_string()}\n"
-            
-            # Add damage reduction if any
-            if hasattr(self.player, 'damage_reduction') and self.player.damage_reduction > 0:
-                reduction_percent = int(self.player.damage_reduction * 100)
-                debug_text += f"Damage Reduction: {reduction_percent}%\n"
+            # Calculate city health as average of section health
+            if self.city_manager.sections:
+                total_health = sum(section['health'] for section in self.city_manager.sections)
+                max_health = sum(section['max_health'] for section in self.city_manager.sections)
+                if max_health > 0:
+                    city_health = f"{(total_health / max_health) * 100:.1f}%"
         
-        # Enemy stats
-        debug_text += f"Enemies Killed: {entity_info['enemies_killed']}\n"
+        # Difficulty info
+        difficulty_preset = "N/A"
+        enemy_hp_mult = "N/A"
+        enemy_dmg_mult = "N/A"
         
-        # Crafting stats if available
-        if hasattr(self, 'crafting_system'):
-            debug_text += "Upgrades: "
-            any_upgrades = False
-            for upgrade_id, level in self.crafting_system.crafted_upgrades.items():
-                if level > 0:
-                    any_upgrades = True
-                    name = self.crafting_system.recipes[upgrade_id]["name"]
-                    debug_text += f"{name} Lv.{level}, "
-            
-            if not any_upgrades:
-                debug_text += "None"
-            else:
-                debug_text = debug_text[:-2]  # Remove trailing comma and space
+        if hasattr(self, 'adaptive_difficulty_system'):
+            difficulty_preset = self.adaptive_difficulty_system.difficulty_preset.name
+            factors = self.adaptive_difficulty_system.get_current_difficulty_factors()
+            enemy_hp_mult = f"{factors['enemy_health']:.2f}x"
+            enemy_dmg_mult = f"{factors['enemy_damage']:.2f}x"
         
-        # Relic stats if available
-        if hasattr(self, 'relic_system') and self.relic_system.active_relics:
-            debug_text += "\nRelics: "
-            for relic_id in self.relic_system.active_relics:
-                relic_name = self.relic_system.available_relics[relic_id]["name"]
-                debug_text += f"{relic_name}, "
-            debug_text = debug_text[:-2]  # Remove trailing comma and space
+        # Format debug text
+        debug_text = (
+            f"Player: Pos={player_pos} HP={player_health} LVL={player_level}\n"
+            f"Time: {time_of_day} ({game_time})\n"
+            f"Entities: {entity_count} (Enemies: {enemy_count}, Projectiles: {projectile_count})\n"
+            f"City: HP={city_health} DEF={city_defense}\n"
+            f"Difficulty: {difficulty_preset} (HP={enemy_hp_mult}, DMG={enemy_dmg_mult})\n"
+            f"FPS: {fps:.1f}"
+        )
         
-        # Update the on-screen text
+        # Update the text
         self.debug_text.setText(debug_text)
     
     def toggle_pause(self):
@@ -452,12 +528,22 @@ class NightfallDefenders(ShowBase):
     
     def toggle_day_night(self):
         """Toggle between day and night for testing"""
-        if self.day_night_cycle.is_daytime:
-            self.day_night_cycle.current_time = self.day_night_cycle.dusk_start
-        else:
-            self.day_night_cycle.current_time = self.day_night_cycle.dawn_start
+        current_time = self.day_night_cycle.time_of_day
         
-        print(f"Switching to {'night' if self.day_night_cycle.is_daytime else 'day'}")
+        if current_time in [TimeOfDay.DAWN, TimeOfDay.DAY]:
+            # Switch to night
+            self.day_night_cycle.set_time(TimeOfDay.NIGHT)
+            message = "Night has fallen... Beware of stronger enemies!"
+            print("Switching to night")
+        else:
+            # Switch to day
+            self.day_night_cycle.set_time(TimeOfDay.DAY)
+            message = "The sun rises, bringing safety and light."
+            print("Switching to day")
+            
+        # Show message to player
+        if hasattr(self, 'show_message'):
+            self.show_message(message, 3.0)
     
     def spawn_player(self):
         """Debug function to respawn player at origin"""
@@ -485,7 +571,7 @@ class NightfallDefenders(ShowBase):
         # Create control help text
         self.help_text = OnscreenText(
             text="WASD: Move | MOUSE1: Attack | E: Interact/Gather | SPACE: Dodge\n"
-                 "1-4: Change Projectile | T: Toggle Day/Night | F1: Toggle Debug | C: Crafting | R: Relics",
+                 "1-4: Change Projectile | T: Toggle Day/Night | F: Toggle Fog | F1: Toggle Debug | C: Crafting | R: Relics | O: Difficulty Settings",
             style=1,
             fg=(1, 1, 1, 1),
             bg=(0, 0, 0, 0.5),
@@ -602,9 +688,15 @@ class NightfallDefenders(ShowBase):
             return None
 
     def cleanup_and_exit(self):
-        """Clean up and exit the game"""
-        print("Exiting game...")
-        # Save game state if needed
+        """Clean up resources and exit the game"""
+        # Clean up UI manager
+        if hasattr(self, 'ui_manager'):
+            self.ui_manager.cleanup()
+        
+        # Clean up other resources
+        # (existing code)
+        
+        # Exit the game
         self.userExit()
         
     def toggle_debug_display(self):
@@ -691,19 +783,46 @@ class NightfallDefenders(ShowBase):
             city_text += f"Defenders: {city_stats['current_defenders']}/{city_stats['max_defenders']}"
             self.debug_display['city'].setText(city_text)
 
+    def toggle_fog(self):
+        """Toggle night fog for testing"""
+        if hasattr(self, 'night_fog'):
+            self.night_fog.toggle_fog()
+            
+            if self.night_fog.active:
+                message = "Night fog activated"
+            else:
+                message = "Night fog deactivated"
+                
+            # Show message to player
+            if hasattr(self, 'show_message'):
+                self.show_message(message, 2.0)
+
+    def toggle_difficulty_settings(self):
+        """Show the difficulty settings UI"""
+        self.difficulty_settings.show_settings()
+        
+        # Pause the game while settings are open
+        self.pause_game()
+        
+        # Add a task to check when settings are closed
+        self.taskMgr.add(self._check_difficulty_settings_closed, "check_settings_closed")
+        
+    def _check_difficulty_settings_closed(self, task):
+        """Check if difficulty settings UI has been closed and resume game if so"""
+        if not self.difficulty_settings.main_frame:
+            self.resume_game()
+            return task.done
+        return task.cont
+
 def main():
     """Main entry point for the game"""
-    try:
-        app = NightfallDefenders()
-        app.run()
-    except Exception as e:
-        import traceback
-        print(f"ERROR: Game crashed: {e}")
-        traceback.print_exc()
-        return 1
+    parser = argparse.ArgumentParser(description="Nightfall Defenders Game")
+    parser.add_argument("--adaptive-difficulty", action="store_true", help="Enable adaptive difficulty system")
+    args = parser.parse_args()
     
-    return 0
-
+    # Create and run the game
+    app = NightfallDefenders(enable_adaptive_difficulty=args.adaptive_difficulty)
+    app.run()
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

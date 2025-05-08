@@ -1,1 +1,0 @@
-# Valeurs par défaut de la configuration

@@ -1,1 +1,0 @@
-# Projectiles à tête chercheuse

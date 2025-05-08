@@ -59,11 +59,15 @@ class EntityManager:
             "experience": 0
         }
         
+        # Track subservient enemies
+        self.subservient_enemies = []
+        
         # Debug information
         self.debug_info = {
             "enemy_count": 0,
             "projectile_count": 0,
-            "update_time": 0.0
+            "update_time": 0.0,
+            "subservient_count": 0
         }
     
     def create_player(self, position=Vec3(0, 0, 0)):
@@ -93,7 +97,7 @@ class EntityManager:
             position (Vec3): Position to spawn the enemy
         
         Returns:
-            entity_id: ID of the created enemy entity
+            Enemy: The created enemy object
         """
         # Check if we've reached the enemy limit
         if len(self.enemies) >= self.max_enemies:
@@ -115,7 +119,11 @@ class EntityManager:
         # Add to spatial partitioning
         self.add_to_spatial_grid(enemy)
         
-        return self.next_entity_id
+        # Increment the entity ID
+        self.next_entity_id += 1
+        
+        # Return the enemy object
+        return enemy
     
     def create_projectile(self, projectile_type, origin, direction, owner=None, target=None, damage=10):
         """
@@ -399,6 +407,17 @@ class EntityManager:
         # Update enemies
         for enemy in self.enemies[:]:
             enemy.update(dt)
+            
+            # Track enemies that have become subservient
+            if hasattr(enemy, 'psychology') and hasattr(enemy.psychology, 'state'):
+                from game.enemy_psychology import PsychologicalState
+                
+                # Add newly subservient enemies to the list
+                if enemy.psychology.state == PsychologicalState.SUBSERVIENT and enemy not in self.subservient_enemies:
+                    self.subservient_enemies.append(enemy)
+                # Remove enemies that are no longer subservient
+                elif enemy.psychology.state != PsychologicalState.SUBSERVIENT and enemy in self.subservient_enemies:
+                    self.subservient_enemies.remove(enemy)
         
         # Update player(s)
         for player in self.players:
@@ -435,41 +454,261 @@ class EntityManager:
         self.debug_info["projectile_count"] = len(self.projectiles)
         self.debug_info["resource_node_count"] = len(self.resource_nodes)
         self.debug_info["resource_drop_count"] = len(self.resource_drops)
+        self.debug_info["subservient_count"] = len(self.subservient_enemies)
     
     def spawn_random_enemies(self, count, min_distance=15.0, max_distance=30.0):
         """
-        Spawn random enemies around the player
+        Spawn a number of random enemies around the player
         
         Args:
             count (int): Number of enemies to spawn
             min_distance (float): Minimum distance from player
             max_distance (float): Maximum distance from player
+        
+        Returns:
+            int: Number of enemies successfully spawned
         """
-        if not self.players:
-            return
+        if not self.game.player:
+            return 0
+            
+        player_pos = self.game.player.position
+        spawned = 0
         
-        player = self.players[0]
+        # Get spawn multiplier from day/night cycle if available
+        spawn_multiplier = 1.0
+        if hasattr(self.game, 'day_night_cycle'):
+            spawn_multiplier = self.game.day_night_cycle.get_enemy_spawn_multiplier()
         
-        for _ in range(count):
-            # Check if we've reached the enemy limit
+        # Apply adaptive difficulty spawn rate multiplier if available
+        if hasattr(self.game, 'adaptive_difficulty_system'):
+            # Get current difficulty factors
+            factors = self.game.adaptive_difficulty_system.get_current_difficulty_factors()
+            spawn_multiplier *= factors['enemy_spawn_rate']
+            
+            # Debug info
+            if hasattr(self.game, 'debug_mode') and self.game.debug_mode:
+                print(f"Applying adaptive difficulty to spawn rate: x{factors['enemy_spawn_rate']:.2f}")
+                print(f"Combined spawn multiplier: x{spawn_multiplier:.2f}")
+        
+        # Adjust count based on spawn multiplier
+        adjusted_count = int(count * spawn_multiplier)
+        
+        # Ensure at least one enemy spawns if count > 0, even with low multipliers
+        if count > 0 and adjusted_count == 0:
+            adjusted_count = 1
+            
+        if hasattr(self.game, 'debug_mode') and self.game.debug_mode:
+            print(f"Spawning {adjusted_count} enemies (original count: {count})")
+        
+        for _ in range(adjusted_count):
+            # Skip if we've reached the enemy limit
             if len(self.enemies) >= self.max_enemies:
                 break
-            
-            # Generate a random position around the player
+                
+            # Generate random angle and distance
             angle = random.uniform(0, math.pi * 2)
             distance = random.uniform(min_distance, max_distance)
             
-            pos_x = player.position.x + math.cos(angle) * distance
-            pos_y = player.position.y + math.sin(angle) * distance
-            pos_z = 0  # Ground level
+            # Calculate spawn position
+            spawn_x = player_pos.x + math.cos(angle) * distance
+            spawn_y = player_pos.y + math.sin(angle) * distance
+            spawn_pos = Vec3(spawn_x, spawn_y, 0)
             
-            position = Vec3(pos_x, pos_y, pos_z)
+            # Check if this position is valid
+            if not self._is_valid_spawn_position(spawn_pos):
+                continue
             
-            # Determine enemy type (30% chance for ranged, 70% for basic)
-            enemy_type = "ranged" if random.random() < 0.3 else "basic"
+            # Determine enemy type - apply difficulty-based probabilities
+            enemy_type_probs = {
+                "basic": 0.6,   # Default 60% chance for basic enemy
+                "ranged": 0.2,  # Default 20% chance for ranged enemy
+                "nimble": 0.1,  # Default 10% chance for nimble enemy
+                "brute": 0.05,  # Default 5% chance for brute enemy
+                "alpha": 0.05   # Default 5% chance for alpha enemy
+            }
+            
+            # Modify probabilities based on difficulty if available
+            if hasattr(self.game, 'adaptive_difficulty_system'):
+                factors = self.game.adaptive_difficulty_system.get_current_difficulty_factors()
+                # Higher difficulty means more special enemy types
+                if factors['enemy_spawn_rate'] > 1.0:
+                    # Reduce basic enemies, increase special types
+                    modifier = (factors['enemy_spawn_rate'] - 1.0) * 0.5
+                    enemy_type_probs["basic"] = max(0.3, 0.6 - modifier)
+                    enemy_type_probs["ranged"] = min(0.4, 0.2 + modifier * 0.3)
+                    enemy_type_probs["nimble"] = min(0.2, 0.1 + modifier * 0.2)
+                    enemy_type_probs["brute"] = min(0.15, 0.05 + modifier * 0.25)
+                    enemy_type_probs["alpha"] = min(0.15, 0.05 + modifier * 0.25)
+            
+            # Select enemy type based on probabilities
+            enemy_types = list(enemy_type_probs.keys())
+            enemy_weights = [enemy_type_probs[t] for t in enemy_types]
+            enemy_type = random.choices(enemy_types, weights=enemy_weights, k=1)[0]
             
             # Create the enemy
-            self.create_enemy(enemy_type, position)
+            if self.create_enemy(enemy_type, spawn_pos):
+                spawned += 1
+                
+        return spawned
+        
+    def spawn_enemy_at_position(self, position, force_spawn=False):
+        """
+        Spawn an enemy at a specific position (used for fog-based spawning)
+        
+        Args:
+            position (Vec3): Position to spawn the enemy
+            force_spawn (bool): Whether to force spawn even if at max enemies
+            
+        Returns:
+            Enemy: The spawned enemy or None if unsuccessful
+        """
+        # Skip if we've reached the enemy limit and not forcing
+        if len(self.enemies) >= self.max_enemies and not force_spawn:
+            return None
+            
+        # Check if this position is valid
+        if not self._is_valid_spawn_position(position):
+            return None
+            
+        # Get spawn multiplier and strength multiplier from day/night cycle if available
+        spawn_multiplier = 1.0
+        strength_multiplier = 1.0
+        if hasattr(self.game, 'day_night_cycle'):
+            spawn_multiplier = self.game.day_night_cycle.get_enemy_spawn_multiplier()
+            strength_multiplier = self.game.day_night_cycle.get_enemy_strength_multiplier()
+        
+        # Apply adaptive difficulty if available
+        if hasattr(self.game, 'adaptive_difficulty_system'):
+            factors = self.game.adaptive_difficulty_system.get_current_difficulty_factors()
+            spawn_multiplier *= factors['enemy_spawn_rate']
+            
+            # Debug info
+            if hasattr(self.game, 'debug_mode') and self.game.debug_mode:
+                print(f"Fog spawn using adaptive difficulty: x{factors['enemy_spawn_rate']:.2f}")
+                print(f"Combined spawn chance: x{spawn_multiplier:.2f}")
+        
+        # Skip spawn chance based on spawn multiplier
+        # Higher spawn_multiplier means greater chance of spawning
+        if random.random() > spawn_multiplier * 0.5:
+            return None
+        
+        # Determine enemy type based on difficulty
+        enemy_type_probs = {
+            "basic": 0.5,   # Default 50% chance for basic enemy
+            "ranged": 0.3,  # Default 30% chance for ranged enemy (higher for fog)
+            "nimble": 0.1,  # Default 10% chance for nimble enemy
+            "brute": 0.05,  # Default 5% chance for brute enemy
+            "alpha": 0.05   # Default 5% chance for alpha enemy
+        }
+        
+        # Modify probabilities based on difficulty if available
+        if hasattr(self.game, 'adaptive_difficulty_system'):
+            factors = self.game.adaptive_difficulty_system.get_current_difficulty_factors()
+            # Higher difficulty means more special enemy types
+            if factors['enemy_spawn_rate'] > 1.0:
+                # Reduce basic enemies, increase special types
+                modifier = (factors['enemy_spawn_rate'] - 1.0) * 0.5
+                enemy_type_probs["basic"] = max(0.3, 0.5 - modifier)
+                enemy_type_probs["ranged"] = min(0.4, 0.3 + modifier * 0.2)
+                enemy_type_probs["nimble"] = min(0.2, 0.1 + modifier * 0.2)
+                enemy_type_probs["brute"] = min(0.15, 0.05 + modifier * 0.3)
+                enemy_type_probs["alpha"] = min(0.15, 0.05 + modifier * 0.3)
+        
+        # Select enemy type based on probabilities
+        enemy_types = list(enemy_type_probs.keys())
+        enemy_weights = [enemy_type_probs[t] for t in enemy_types]
+        enemy_type = random.choices(enemy_types, weights=enemy_weights, k=1)[0]
+        
+        # Create the enemy
+        enemy = self.create_enemy(enemy_type, position)
+        
+        # Apply night spawn buffs if spawned from fog
+        if enemy and strength_multiplier > 1.0:
+            # Buff enemy based on night strength multiplier
+            enemy.max_health *= strength_multiplier
+            enemy.health = enemy.max_health
+            enemy.damage *= strength_multiplier
+            
+            # Apply visual effect to indicate night-buffed enemy
+            if hasattr(enemy, 'model'):
+                # Add a glow effect or color tint to indicate buffed status
+                try:
+                    enemy.model.setColorScale(0.7, 0.7, 1.2, 1.0)  # Slight blue tint
+                except:
+                    pass
+        
+        # Record spawn in performance tracker if available
+        if enemy and hasattr(self.game, 'performance_tracker'):
+            self.game.performance_tracker.record_combat_event('enemy_spawned', source=enemy_type)
+        
+        return enemy
+    
+    def _is_valid_spawn_position(self, position):
+        """
+        Check if a position is valid for enemy spawning
+        
+        Args:
+            position (Vec3): Position to check
+            
+        Returns:
+            bool: True if position is valid for spawning
+        """
+        # Check if too close to player
+        if self.game.player:
+            distance_to_player = (position - self.game.player.position).length()
+            if distance_to_player < 10.0:  # Minimum safe distance from player
+                return False
+        
+        # Check if inside city boundaries
+        if hasattr(self.game, 'city_manager') and hasattr(self.game.city_manager, 'is_inside_city'):
+            if self.game.city_manager.is_inside_city(position):
+                return False
+                
+        # Check if collision with buildings or other obstacles
+        # This would need proper collision detection based on your implementation
+        
+        return True
+    
+    def find_enemy_targets_for_subservient(self, subservient_enemy, max_targets=3):
+        """
+        Find potential enemy targets for a subservient enemy to attack
+        
+        Args:
+            subservient_enemy: The subservient enemy looking for targets
+            max_targets (int): Maximum number of targets to return
+            
+        Returns:
+            list: Potential enemy targets (non-subservient enemies)
+        """
+        if not subservient_enemy or not hasattr(subservient_enemy, 'position'):
+            return []
+            
+        # Get subservient enemy position
+        pos = subservient_enemy.position
+        
+        # Get detection range (or use default)
+        detection_range = getattr(subservient_enemy, 'detection_range', 10.0)
+        
+        # Find nearby enemies that are not subservient themselves
+        targets = []
+        for enemy in self.enemies:
+            # Skip the subservient enemy itself
+            if enemy == subservient_enemy:
+                continue
+                
+            # Skip other subservient enemies
+            if enemy in self.subservient_enemies:
+                continue
+                
+            # Check distance
+            if hasattr(enemy, 'position'):
+                distance = (enemy.position - pos).length()
+                if distance <= detection_range:
+                    targets.append(enemy)
+        
+        # Sort by distance and limit to max_targets
+        targets.sort(key=lambda e: (e.position - pos).length())
+        return targets[:max_targets]
     
     def get_nearby_entities(self, position, radius, entity_type=None):
         """
@@ -494,6 +733,8 @@ class EntityManager:
                 if entity_type == "player" and entity not in self.players:
                     continue
                 if entity_type == "projectile" and entity not in self.projectiles:
+                    continue
+                if entity_type == "subservient" and entity not in self.subservient_enemies:
                     continue
             
             # Check distance
@@ -613,6 +854,9 @@ class EntityManager:
             self.players.remove(entity)
         if entity in self.enemies:
             self.enemies.remove(entity)
+            # Also remove from subservient list if present
+            if entity in self.subservient_enemies:
+                self.subservient_enemies.remove(entity)
         if entity in self.projectiles:
             self.projectiles.remove(entity)
         if entity in self.resource_nodes:
@@ -656,6 +900,7 @@ class EntityManager:
         self.resource_drops = []
         self.interactables = []
         self.buildings = []
+        self.subservient_enemies = []
         
         # Reset spatial grid
         self.spatial_grid = {}
@@ -699,5 +944,6 @@ class EntityManager:
             "resource_node_count": len(self.resource_nodes),
             "resource_drop_count": len(self.resource_drops),
             "enemies_killed": self.enemies_killed,
-            "resources_collected": self.resources_collected
+            "resources_collected": self.resources_collected,
+            "subservient_count": len(self.subservient_enemies)
         } 

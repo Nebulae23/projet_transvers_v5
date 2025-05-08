@@ -1,0 +1,18 @@
+{
+  "model_type": "prop",
+  "prop_type": "tree",
+  "procedural_params": {
+    "height": 8.49260427537817,
+    "trunk_radius": 0.48295140167496986,
+    "canopy_radius": 3.0831415459794798,
+    "species": "willow",
+    "leaf_density": 0.8556532012425699
+  },
+  "generated_at": 1746720935.5100567,
+  "format": "bam",
+  "vertices": 1026,
+  "triangles": 389,
+  "has_collision": true,
+  "has_textures": true,
+  "texture_resolution": "512x512"
+}

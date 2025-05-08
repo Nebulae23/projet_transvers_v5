@@ -1,0 +1,75 @@
+{
+    "characters": {
+        "class_types": ["warrior", "mage", "cleric", "alchemist", "ranger", "summoner"],
+        "variations_per_class": 2,
+        "animation_frames": {
+            "idle": 4,
+            "walk": 8,
+            "attack": 6
+        }
+    },
+    "terrain": {
+        "terrain_types": ["grass", "forest", "mountain", "water", "desert", "snow"],
+        "variations_per_type": 3,
+        "tile_size": 128,
+        "procedural_params": {
+            "noise_scale": 0.1,
+            "octaves": 4,
+            "persistence": 0.5
+        }
+    },
+    "props": {
+        "prop_types": ["tree", "rock", "bush", "flower", "chest", "sign"],
+        "variations_per_type": 2,
+        "complexity_levels": ["low", "medium", "high"],
+        "use_3d_models": true
+    },
+    "buildings": {
+        "building_types": ["house", "shop", "temple", "tower", "wall", "gate"],
+        "variations_per_type": 2,
+        "size_ranges": {
+            "house": {"min_width": 5, "max_width": 10, "min_height": 3, "max_height": 6},
+            "tower": {"min_width": 3, "max_width": 5, "min_height": 8, "max_height": 15},
+            "shop": {"min_width": 6, "max_width": 12, "min_height": 3, "max_height": 5}
+        },
+        "use_3d_models": true
+    },
+    "ui": {
+        "button_states": ["normal", "hover", "pressed", "disabled"],
+        "panel_types": ["inventory", "character", "map", "options"],
+        "icon_types": ["health", "mana", "stamina", "attack", "defense", "speed"],
+        "use_2d_sprites": true
+    },
+    "effects": {
+        "effect_types": ["fire", "water", "lightning", "magic", "healing"],
+        "variations_per_type": 3,
+        "animation_frames": 8,
+        "particle_count_ranges": {
+            "fire": {"min": 50, "max": 150},
+            "water": {"min": 30, "max": 100},
+            "lightning": {"min": 5, "max": 20}
+        },
+        "hybrid_approach": true
+    },
+    "generation_settings": {
+        "asset_format_priorities": {
+            "characters": ["2d", "3d"],
+            "terrain": ["2d", "3d"],
+            "props": ["3d", "2d"],
+            "buildings": ["3d", "2d"],
+            "ui": ["2d"],
+            "effects": ["2d", "3d"]
+        },
+        "fallback_strategy": "use_placeholder",
+        "quality_settings": {
+            "2d": {
+                "resolution": "high",
+                "compression": "medium"
+            },
+            "3d": {
+                "polygon_count": "medium",
+                "texture_resolution": "medium"
+            }
+        }
+    }
+} 

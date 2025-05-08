@@ -1,0 +1,18 @@
+{
+  "model_type": "building",
+  "building_type": "house",
+  "procedural_params": {
+    "width": 8.741537062699033,
+    "depth": 6.690959437183369,
+    "height": 4.125851382965925,
+    "roof_style": "dome",
+    "material": "stone"
+  },
+  "generated_at": 1746720935.4997776,
+  "format": "bam",
+  "vertices": 4281,
+  "triangles": 1232,
+  "has_collision": true,
+  "has_textures": true,
+  "texture_resolution": "1024x1024"
+}

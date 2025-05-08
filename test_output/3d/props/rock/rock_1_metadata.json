@@ -1,0 +1,17 @@
+{
+  "model_type": "prop",
+  "prop_type": "rock",
+  "procedural_params": {
+    "size": 1.8900153242326105,
+    "roughness": 0.7392635536938672,
+    "shape": "rounded",
+    "moss_coverage": 0.017692596370424973
+  },
+  "generated_at": 1746720935.5112453,
+  "format": "bam",
+  "vertices": 614,
+  "triangles": 779,
+  "has_collision": true,
+  "has_textures": true,
+  "texture_resolution": "512x512"
+}

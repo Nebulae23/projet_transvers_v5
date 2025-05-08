@@ -1,0 +1,18 @@
+{
+  "model_type": "building",
+  "building_type": "house",
+  "procedural_params": {
+    "width": 5.4140119873073065,
+    "depth": 5.094856031848152,
+    "height": 3.6672156741215076,
+    "roof_style": "peaked",
+    "material": "brick"
+  },
+  "generated_at": 1746720935.500379,
+  "format": "bam",
+  "vertices": 2415,
+  "triangles": 625,
+  "has_collision": true,
+  "has_textures": true,
+  "texture_resolution": "1024x1024"
+}

@@ -1,0 +1,52 @@
+{
+    "volume_settings": {
+        "music": 0.8,
+        "sfx": 1.0,
+        "ambient": 0.7,
+        "ui": 0.9,
+        "voice": 1.0
+    },
+    "crossfade_time": 2.0,
+    "sound_pools": {
+        "footsteps": 3,
+        "impacts": 5,
+        "ui_clicks": 2
+    },
+    "3d_audio": {
+        "footstep_min_distance": 5.0,
+        "footstep_max_distance": 30.0,
+        "ambient_min_distance": 20.0,
+        "ambient_max_distance": 100.0,
+        "default_min_distance": 10.0,
+        "default_max_distance": 50.0
+    },
+    "ambient_sounds": {
+        "dawn": ["ambient_birds_morning", "ambient_wind_light"],
+        "day": ["ambient_birds_day", "ambient_wind_medium"],
+        "dusk": ["ambient_crickets_light", "ambient_wind_medium"],
+        "night": ["ambient_crickets", "ambient_wolf_howl", "ambient_wind_strong"],
+        "midnight": ["ambient_crickets_heavy", "ambient_owl", "ambient_wind_eerie"]
+    },
+    "music_tracks": {
+        "exploration": {
+            "file": "exploration",
+            "loop": true
+        },
+        "combat": {
+            "file": "combat",
+            "loop": true
+        },
+        "town": {
+            "file": "town",
+            "loop": true
+        },
+        "boss": {
+            "file": "boss",
+            "loop": true
+        },
+        "menu": {
+            "file": "menu",
+            "loop": true
+        }
+    }
+} 

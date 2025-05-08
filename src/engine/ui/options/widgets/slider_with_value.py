@@ -1,1 +1,0 @@
-# Widget Slider avec affichage numérique de la valeur

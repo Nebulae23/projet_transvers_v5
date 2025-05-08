@@ -8,6 +8,13 @@ Player entity module for Nightfall Defenders
 from panda3d.core import NodePath, Vec3, KeyboardButton, MouseButton
 from direct.actor.Actor import Actor
 import math
+import random
+
+# Import the new systems
+from game.ability_system import AbilityManager
+from game.character_class import ClassType
+from game.skill_tree import SkillTree
+import game.skill_definitions
 
 class Player:
     """Player entity with movement, combat, and inventory systems"""
@@ -24,12 +31,15 @@ class Player:
         self.position = Vec3(0, 0, 0)
         self.velocity = Vec3(0, 0, 0)
         self.facing_angle = 0  # In degrees
+        self.direction = Vec3(0, 1, 0)  # Forward direction vector
         
         # Player stats
         self.max_health = 100
         self.health = 100
         self.max_stamina = 100
         self.stamina = 100
+        self.max_mana = 100  # New resource for abilities
+        self.mana = 100
         self.speed = 5.0  # Units per second
         self.dodge_speed = 12.0  # Dodge boost
         
@@ -47,9 +57,32 @@ class Player:
         self.dodge_cooldown = 0
         self.attack_cooldown = 0
         
-        # Projectile settings
+        # Projectile settings - kept for backward compatibility
         self.projectile_type = "straight"  # Default projectile type
         self.setup_projectile_types()
+        
+        # New ability system
+        self.ability_manager = AbilityManager(self)
+        self.current_ability_slot = 0
+        
+        # Character class system
+        self.character_class = None  # Will be set when class is chosen
+        self.damage_multiplier = 1.0
+        self.spell_damage_multiplier = 1.0
+        self.healing_multiplier = 1.0
+        self.dodge_chance = 0.0
+        
+        # Skill tree
+        self.skill_tree = SkillTree()
+        self.skill_tree.create_from_template(game.skill_definitions.create_skill_tree_template())
+        self.skill_points = 0
+        
+        # Passives
+        self.passives = {}
+        
+        # Fusion and Harmonization flags
+        self.can_create_fusions = False
+        self.can_harmonize_abilities = False
         
         # Load the player model
         self.setup_model()
@@ -61,15 +94,16 @@ class Player:
         self.debug_node = self.root.attachNewNode("PlayerDebug")
         self.draw_debug_visualization()
         
-        # Setup key listeners for projectile switching
-        self.setup_projectile_keys()
+        # Setup key listeners for ability switching
+        self.setup_ability_keys()
         
         # Inventory
         self.inventory = {
             "wood": 0,
             "stone": 0,
             "crystal": 0,
-            "herb": 0
+            "herb": 0,
+            "monster_essence": 0  # New resource for skill tree
         }
         
         # Relic system properties
@@ -146,6 +180,9 @@ class Player:
         # Update cooldowns
         self.update_cooldowns(dt)
         
+        # Update ability manager
+        self.ability_manager.update(dt)
+        
         # Update visibility based on time of day
         self._update_visibility()
         
@@ -163,6 +200,22 @@ class Player:
         # Update debug visualization if needed
         if hasattr(self.game, 'debug_mode') and self.game.debug_mode:
             self.draw_debug_visualization()
+        
+        # Regenerate mana
+        self.regenerate_mana(dt)
+    
+    def regenerate_mana(self, dt):
+        """Regenerate mana over time"""
+        # Base mana regen rate
+        mana_regen_rate = 2.0  # Mana per second
+        
+        # Apply modifiers from passives
+        if "mana_regen_multiplier" in self.get_passive_effects():
+            mana_regen_multiplier = self.get_passive_effects()["mana_regen_multiplier"]
+            mana_regen_rate *= mana_regen_multiplier
+        
+        # Apply regen
+        self.mana = min(self.max_mana, self.mana + mana_regen_rate * dt)
     
     def set_moving(self, is_pressed, direction):
         """
@@ -198,69 +251,619 @@ class Player:
         if input_vector.length() > 0:
             input_vector.normalize()
             
-            # Set facing direction based on movement (optional)
-            if input_vector.length() > 0:
-                # Calculate angle in degrees using math module
-                self.facing_angle = -math.degrees(math.atan2(input_vector[0], input_vector[1]))
+            # Update the facing angle based on movement direction
+            # Only if the player is actually moving
+            self.facing_angle = math.degrees(math.atan2(-input_vector.x, input_vector.y))
+            
+            # Update the direction vector
+            self.direction = Vec3(
+                -math.sin(math.radians(self.facing_angle)),
+                math.cos(math.radians(self.facing_angle)),
+                0
+            )
         
-        # Apply movement speed
-        current_speed = self.dodge_speed if self.is_dodging else self.speed
-        self.velocity = input_vector * current_speed
+        # Apply input to velocity
+        speed_to_use = self.speed
+        if self.is_dodging:
+            speed_to_use = self.dodge_speed
+            
+        # Apply speed modifiers from passives
+        if "speed_multiplier" in self.get_passive_effects():
+            speed_to_use *= self.get_passive_effects()["speed_multiplier"]
+            
+        self.velocity = input_vector * speed_to_use
     
     def process_action_input(self, dt):
-        """Process action inputs from the player"""
-        # This method is kept for compatibility, but actual actions
-        # are now triggered directly by key bindings
-
-        # Update is_interacting flag based on interaction cooldown
-        if hasattr(self, 'interaction_cooldown') and self.interaction_cooldown > 0:
-            self.interaction_cooldown -= dt
-            if self.interaction_cooldown <= 0:
-                self.is_interacting = False
+        """Process action input from the player"""
+        # Cooldown updates are handled in update_cooldowns
+        pass
     
     def primary_attack(self):
-        """Handle primary attack action"""
-        if not self.is_attacking and self.attack_cooldown <= 0:
-            self.start_attack()
+        """Handle primary attack (use current ability)"""
+        self.ability_manager.use_ability(self.current_ability_slot)
     
     def secondary_attack(self):
-        """Handle secondary attack (change projectile type)"""
-        # Cycle through projectile types
-        current_types = list(self.projectile_types.keys())
-        current_index = current_types.index(self.projectile_type)
-        next_index = (current_index + 1) % len(current_types)
-        self.set_projectile_type(current_types[next_index])
+        """Handle secondary attack (change to next ability)"""
+        # Cycle through active abilities
+        if len(self.ability_manager.active_abilities) > 0:
+            self.current_ability_slot = (self.current_ability_slot + 1) % len(self.ability_manager.active_abilities)
+            self.show_current_ability()
     
     def dodge(self):
-        """Handle dodge action"""
-        if not self.is_dodging and self.dodge_cooldown <= 0:
+        """Perform a dodge action"""
+        if self.dodge_cooldown <= 0:
             self.start_dodge()
     
     def interact(self):
-        """Handle interact action"""
+        """Interact with nearby objects"""
         if not self.is_interacting:
             self.interact_with_world()
     
     def update_cooldowns(self, dt):
-        """Update action cooldowns"""
+        """Update all cooldowns"""
+        # Dodge cooldown
         if self.dodge_cooldown > 0:
             self.dodge_cooldown -= dt
         
+        # Attack cooldown (for backward compatibility)
         if self.attack_cooldown > 0:
             self.attack_cooldown -= dt
-            
-        # End dodge state if cooldown is finished
-        if self.is_dodging and self.dodge_cooldown <= 0.8:  # Dodge lasts for 0.2s
-            self.is_dodging = False
     
     def apply_movement(self, dt):
-        """Apply movement velocity to position with collision detection"""
-        # Simple movement without collision for now
+        """Apply movement based on velocity"""
+        # Move the player
         self.position += self.velocity * dt
         
-        # In a real implementation, we would check for collisions here
-        # and adjust the position accordingly
+        # TODO: Add collision detection and response
     
+    def setup_projectile_types(self):
+        """Setup different projectile types and their properties (for backward compatibility)"""
+        self.projectile_types = {
+            "straight": {
+                "name": "Straight Shot",
+                "cooldown": 0.5,
+                "color": (0.2, 0.8, 1),
+                "damage": 10
+            },
+            "arcing": {
+                "name": "Arcing Shot",
+                "cooldown": 1.0,
+                "color": (1, 0.4, 0.1),
+                "damage": 12
+            },
+            "spiral": {
+                "name": "Spiral Shot",
+                "cooldown": 1.5,
+                "color": (0.2, 1, 0.2),
+                "damage": 14
+            },
+            "homing": {
+                "name": "Homing Shot",
+                "cooldown": 2.0,
+                "color": (0.8, 0.1, 0.8),
+                "damage": 16
+            }
+        }
+    
+    def setup_ability_keys(self):
+        """Setup key listeners for ability selection"""
+        self.game.accept("1", self.set_ability_slot, [0])
+        self.game.accept("2", self.set_ability_slot, [1])
+        self.game.accept("3", self.set_ability_slot, [2])
+        self.game.accept("4", self.set_ability_slot, [3])
+        
+        # Show initial ability
+        self.show_current_ability()
+    
+    def set_ability_slot(self, slot):
+        """Set the current ability slot"""
+        if slot >= 0 and slot < len(self.ability_manager.active_abilities):
+            self.current_ability_slot = slot
+            self.show_current_ability()
+    
+    def show_current_ability(self):
+        """Display the current ability to the player"""
+        # Get current ability
+        if len(self.ability_manager.active_abilities) > self.current_ability_slot:
+            ability_id = self.ability_manager.active_abilities[self.current_ability_slot]
+            ability = self.ability_manager.get_ability(ability_id)
+            
+            if ability:
+                print(f"Current ability: {ability.name}")
+                
+                # Update UI if available
+                if hasattr(self.game, 'weapon_text'):
+                    self.game.weapon_text.setText(f"Current Ability: {ability.name} ({self.current_ability_slot+1})")
+                
+                # Change player color to match ability (for visual feedback)
+                if hasattr(self, 'model') and not self.model.isEmpty():
+                    # Use different colors based on ability type
+                    if ability.ability_type.value == "projectile":
+                        self.model.setColor(0.2, 0.6, 1.0, 1)  # Blue
+                    elif ability.ability_type.value == "melee":
+                        self.model.setColor(1.0, 0.4, 0.2, 1)  # Orange
+                    elif ability.ability_type.value == "area":
+                        self.model.setColor(0.4, 1.0, 0.4, 1)  # Green
+                    else:
+                        self.model.setColor(0.8, 0.8, 0.2, 1)  # Yellow
+    
+    def start_dodge(self):
+        """Start a dodge action"""
+        self.is_dodging = True
+        self.dodge_cooldown = 1.0  # 1 second cooldown
+        
+        # Apply a quick boost in the current movement direction
+        # The actual boost is applied in process_movement_input
+        print("Player dodged!")
+    
+    def interact_with_world(self):
+        """Interact with nearby objects in the world"""
+        self.is_interacting = True
+        
+        # Find nearby interactable objects
+        if hasattr(self.game, 'entity_manager'):
+            # Get all nearby interactables within interaction radius
+            interaction_radius = 2.0
+            found_interaction = False
+            
+            # Check for nearby interactables first
+            if hasattr(self.game.entity_manager, 'get_nearby_interactables'):
+                nearby_interactables = self.game.entity_manager.get_nearby_interactables(
+                    self.position, interaction_radius
+                )
+                
+                if nearby_interactables:
+                    # Find the closest interactable
+                    closest_interactable = min(
+                        nearby_interactables, 
+                        key=lambda obj: (obj.position - self.position).length()
+                    )
+                    
+                    # Interact with it if it has an interact method
+                    if hasattr(closest_interactable, 'interact'):
+                        closest_interactable.interact(self)
+                        found_interaction = True
+            
+            # If no interactable found, try resource nodes
+            if not found_interaction:
+                nearby_entities = self.game.entity_manager.get_nearby_entities(
+                    self.position, interaction_radius
+                )
+                
+                # Find the closest resource node
+                resource_nodes = [
+                    entity for entity in nearby_entities 
+                    if hasattr(entity, 'resource_type') and entity != self
+                ]
+                
+                if resource_nodes:
+                    closest_node = min(
+                        resource_nodes, 
+                        key=lambda node: (node.position - self.position).length()
+                    )
+                    
+                    # Gather from the resource node
+                    resources = closest_node.gather(self)
+                    
+                    if resources:
+                        # Add to inventory
+                        resource_type = resources["type"]
+                        amount = resources["amount"]
+                        self.inventory[resource_type] = self.inventory.get(resource_type, 0) + amount
+                        
+                        # Track resource collection stats
+                        if hasattr(self.game.entity_manager, 'add_resource_collection'):
+                            self.game.entity_manager.add_resource_collection(resource_type, amount)
+                        
+                        print(f"Gathered {amount} {resource_type}")
+                        found_interaction = True
+            
+            # End interaction after a delay
+            self.game.taskMgr.doMethodLater(0.5, self.end_interaction, "EndInteraction")
+            
+            # Return whether we found something to interact with
+            return found_interaction
+        
+        return False
+    
+    def end_interaction(self, task):
+        """End the interaction state"""
+        self.is_interacting = False
+        return task.done
+    
+    def take_damage(self, amount, source=None):
+        """
+        Take damage from an attack
+        
+        Args:
+            amount (int): Amount of damage to take
+            source: Source of the damage
+            
+        Returns:
+            int: Actual damage taken
+        """
+        # Check for dodge
+        if self.dodge_chance > 0 and random.random() < self.dodge_chance:
+            print("Player dodged the attack!")
+            return 0
+        
+        # Apply damage reduction
+        damage_reduction = self.damage_reduction
+        
+        # Add passive damage reduction if available
+        if "damage_reduction" in self.get_passive_effects():
+            damage_reduction += self.get_passive_effects()["damage_reduction"]
+        
+        # Calculate actual damage
+        actual_damage = int(amount * (1.0 - damage_reduction))
+        actual_damage = max(1, actual_damage)  # Always take at least 1 damage
+        
+        # Apply damage
+        self.health = max(0, self.health - actual_damage)
+        
+        print(f"Player took {actual_damage} damage! Health: {self.health}/{self.max_health}")
+        
+        # Check if dead
+        if self.health <= 0:
+            self.die()
+        
+        return actual_damage
+    
+    def heal(self, amount):
+        """
+        Heal the player
+        
+        Args:
+            amount (int): Amount to heal
+            
+        Returns:
+            int: Actual amount healed
+        """
+        # Apply healing modifier
+        if hasattr(self, 'healing_multiplier'):
+            amount = int(amount * self.healing_multiplier)
+        
+        # Calculate actual healing
+        old_health = self.health
+        self.health = min(self.max_health, self.health + amount)
+        actual_heal = self.health - old_health
+        
+        if actual_heal > 0:
+            print(f"Player healed for {actual_heal}! Health: {self.health}/{self.max_health}")
+        
+        return actual_heal
+    
+    def die(self):
+        """Handle player death"""
+        print("Player has died!")
+        
+        # Trigger resurrection if available
+        if hasattr(self.game, 'trigger_resurrection'):
+            self.game.trigger_resurrection()
+        else:
+            # Default death behavior - respawn at starting position
+            self.health = self.max_health
+            self.position = Vec3(0, 0, 0)
+    
+    def add_experience(self, amount):
+        """
+        Add experience points to the player
+        
+        Args:
+            amount (int): Amount of experience to add
+            
+        Returns:
+            bool: True if player leveled up
+        """
+        self.experience += amount
+        print(f"Gained {amount} experience! Total: {self.experience}")
+        
+        # Check for level up
+        if self.experience >= self.experience_to_next_level:
+            self.level_up()
+            return True
+            
+        return False
+    
+    def level_up(self):
+        """Handle player level up"""
+        self.level += 1
+        
+        # Calculate experience needed for next level
+        # Using a simple formula: base_xp * (level_factor ^ current_level)
+        base_xp = 100
+        level_factor = 1.5
+        self.experience_to_next_level = int(base_xp * (level_factor ** self.level))
+        
+        print(f"Level up! You are now level {self.level}")
+        print(f"Next level at {self.experience_to_next_level} experience")
+        
+        # Increase stats
+        self.max_health += 10
+        self.health = self.max_health
+        
+        self.max_stamina += 5
+        self.stamina = self.max_stamina
+        
+        self.max_mana += 8
+        self.mana = self.max_mana
+        
+        # Grant skill point
+        self.skill_points += 1
+        print(f"You have gained a skill point! (Total: {self.skill_points})")
+        
+        # Apply class-specific level up effects
+        if self.character_class and hasattr(self.game, 'class_manager'):
+            class_manager = self.game.class_manager
+            class_obj = class_manager.get_class(ClassType(self.character_class))
+            if class_obj:
+                class_obj.on_level_up(self, self.level)
+                
+        # Increase projectile damage (for backward compatibility)
+        for projectile_type in self.projectile_types.values():
+            projectile_type["damage"] += 2
+    
+    def set_class(self, class_type):
+        """
+        Set the player's character class
+        
+        Args:
+            class_type (ClassType): The class to set
+            
+        Returns:
+            bool: True if the class was set successfully
+        """
+        if hasattr(self.game, 'class_manager'):
+            success = self.game.class_manager.apply_class(self, class_type)
+            
+            if success:
+                print(f"Character class set to {class_type.value}")
+                
+                # Apply skill tree root node unlock based on class
+                class_obj = self.game.class_manager.get_class(class_type)
+                if class_obj:
+                    root_node_id = f"{class_type.value}_root"
+                    root_node = self.skill_tree.nodes.get(root_node_id)
+                    if root_node:
+                        root_node.is_unlocked = True
+                        
+                        # Make root node's children visible
+                        for child in root_node.children:
+                            child.is_visible = True
+                
+                return True
+        
+        return False
+    
+    def add_passive(self, passive_id, passive_data):
+        """
+        Add a passive effect to the player
+        
+        Args:
+            passive_id (str): ID of the passive
+            passive_data (dict): Data for the passive
+            
+        Returns:
+            bool: True if added successfully
+        """
+        self.passives[passive_id] = passive_data
+        return True
+    
+    def get_passive_effects(self):
+        """
+        Get combined effects from all passives
+        
+        Returns:
+            dict: Combined effects
+        """
+        effects = {}
+        
+        # Combine all passive effects
+        for passive_id, passive_data in self.passives.items():
+            if "effects" in passive_data:
+                for effect_key, effect_value in passive_data["effects"].items():
+                    if effect_key in effects:
+                        # For multipliers, compound them
+                        if "multiplier" in effect_key:
+                            effects[effect_key] *= effect_value
+                        # For flat values, add them
+                        else:
+                            effects[effect_key] += effect_value
+                    else:
+                        effects[effect_key] = effect_value
+        
+        return effects
+    
+    def unlock_ability(self, ability_id):
+        """
+        Unlock a new ability
+        
+        Args:
+            ability_id (str): ID of the ability to unlock
+            
+        Returns:
+            bool: True if unlocked successfully
+        """
+        from game.ability_factory import create_ability
+        
+        # Create the ability
+        ability = create_ability(ability_id)
+        if not ability:
+            return False
+        
+        # Add to ability manager
+        self.ability_manager.add_ability(ability)
+        return self.ability_manager.unlock_ability(ability_id)
+    
+    def modify_ability(self, ability_id, modifiers):
+        """
+        Apply modifiers to an ability
+        
+        Args:
+            ability_id (str): ID of the ability to modify
+            modifiers (dict): Modifiers to apply
+            
+        Returns:
+            bool: True if modified successfully
+        """
+        return self.ability_manager.modify_ability(ability_id, modifiers)
+    
+    def set_specialization(self, spec_path):
+        """
+        Set specialization for an ability
+        
+        Args:
+            spec_path (str): Specialization path identifier
+            
+        Returns:
+            bool: True if specialization was set
+        """
+        # In a real implementation, this would determine which ability to specialize
+        # For now, just specialize the first active ability if available
+        if len(self.ability_manager.active_abilities) > 0:
+            ability_id = self.ability_manager.active_abilities[0]
+            
+            # Convert string path to enum
+            from game.ability_system import SpecializationPath
+            try:
+                path = SpecializationPath(spec_path)
+                return self.ability_manager.specialize_ability(ability_id, path)
+            except:
+                print(f"Invalid specialization path: {spec_path}")
+                return False
+        
+        return False
+    
+    def unlock_fusion_type(self, fusion_type):
+        """
+        Unlock a fusion type
+        
+        Args:
+            fusion_type (str): Type of fusion to unlock
+            
+        Returns:
+            bool: True if unlocked successfully
+        """
+        # Mark player as having fusion abilities
+        self.can_create_fusions = True
+        
+        # Log the fusion type unlock
+        print(f"Unlocked fusion type: {fusion_type}")
+        
+        # Set the specific fusion type flag on the player
+        # This is checked in AbilityManager.create_fusion
+        setattr(self, f"can_use_{fusion_type}_fusion", True)
+        
+        # Display a notification if UI is available
+        if hasattr(self.game, 'ui_manager') and hasattr(self.game.ui_manager, 'show_notification'):
+            self.game.ui_manager.show_notification(f"New Fusion Type Unlocked: {fusion_type.capitalize()}")
+            
+        return True
+    
+    def get_experience_percent(self):
+        """
+        Get the percentage of experience to next level
+        
+        Returns:
+            float: Percentage (0.0 to 1.0)
+        """
+        if self.experience_to_next_level <= 0:
+            return 1.0
+        return min(1.0, self.experience / self.experience_to_next_level)
+    
+    def open_fusion_ui(self):
+        """Open the ability fusion UI"""
+        # Check if fusion is unlocked
+        if not getattr(self, 'can_create_fusions', False):
+            # Show notification if UI manager exists
+            if hasattr(self.game, 'ui_manager') and hasattr(self.game.ui_manager, 'show_notification'):
+                self.game.ui_manager.show_notification("Fusion is not yet unlocked.")
+            return False
+        
+        # Check if fusion UI already exists
+        if not hasattr(self.game, 'fusion_ui'):
+            # Create fusion UI
+            from game.fusion_ui import FusionUI
+            self.game.fusion_ui = FusionUI(self.game)
+        
+        # Show fusion UI
+        self.game.fusion_ui.show(self)
+        return True
+    
+    def get_inventory_string(self):
+        """
+        Get a string representation of the inventory
+        
+        Returns:
+            str: Inventory string
+        """
+        items = []
+        for item, count in self.inventory.items():
+            if count > 0:
+                items.append(f"{item}: {count}")
+        
+        if not items:
+            return "Inventory: Empty"
+        
+        return "Inventory: " + ", ".join(items)
+    
+    def _update_visibility(self):
+        """Update visibility based on time of day"""
+        # This would normally be used to adjust player visibility
+        # based on lighting conditions, day/night cycle, etc.
+        pass
+
+    def get_position(self):
+        """
+        Get the player's current position
+        
+        Returns:
+            Vec3 position
+        """
+        if hasattr(self, 'node_path'):
+            return self.node_path.getPos()
+        return Vec3(0, 0, 0)
+
+    def perform_primary_attack(self):
+        """Perform the player's primary attack"""
+        if hasattr(self, 'primary_attack'):
+            self.primary_attack()
+            
+            # Apply physics impulse if game has physics manager
+            if hasattr(self.game, 'physics_manager'):
+                # Example: apply recoil force opposite to facing direction
+                facing_dir = self.get_facing_direction()
+                recoil_force = facing_dir * -50.0  # Adjust strength as needed
+                self.game.physics_manager.apply_force("player", recoil_force)
+
+    def perform_secondary_attack(self):
+        """Perform the player's secondary attack"""
+        if hasattr(self, 'secondary_attack'):
+            self.secondary_attack()
+            
+            # Apply physics effect if game has physics manager
+            if hasattr(self.game, 'physics_manager'):
+                # Example: for a magical attack, create wind effect
+                self.game.physics_manager.set_wind(
+                    self.get_facing_direction(),  # Wind direction matches player facing
+                    2.0,  # Wind strength
+                    0.4   # Turbulence
+                )
+
+    def get_facing_direction(self):
+        """
+        Get the player's facing direction
+        
+        Returns:
+            Vec3 normalized direction vector
+        """
+        # Simple implementation assuming player faces where they move
+        if hasattr(self, 'movement_dir') and self.movement_dir.length_squared() > 0.001:
+            return self.movement_dir.normalized()
+        
+        # Default facing direction if no movement
+        return Vec3(1, 0, 0)
+
     def setup_projectile_types(self):
         """Setup different projectile types and their properties"""
         self.projectile_types = {
@@ -391,15 +994,6 @@ class Player:
         """End the attack state"""
         self.is_attacking = False
         return task.done
-    
-    def start_dodge(self):
-        """Start a dodge action"""
-        self.is_dodging = True
-        self.dodge_cooldown = 1.0  # 1 second cooldown
-        
-        # Apply a quick boost in the current movement direction
-        # The actual boost is applied in process_movement_input
-        print("Player dodged!")
     
     def interact_with_world(self):
         """Interact with nearby objects in the world"""
@@ -606,4 +1200,84 @@ class Player:
             # Update vision-related game elements
             if hasattr(self.game, 'fog') and hasattr(self.game.fog, 'setLinearRange'):
                 # If the game has fog with configurable range, update it
-                self.game.fog.setLinearRange(0, self.visibility_range) 
+                self.game.fog.setLinearRange(0, self.visibility_range)
+
+    def unlock_harmonization_type(self, harmonization_type):
+        """
+        Unlock a harmonization type
+        
+        Args:
+            harmonization_type (str): Type of harmonization to unlock
+            
+        Returns:
+            bool: True if unlocked successfully
+        """
+        # Mark player as having harmonization abilities
+        self.can_harmonize_abilities = True
+        
+        # Log the harmonization type unlock
+        print(f"Unlocked harmonization type: {harmonization_type}")
+        
+        # Set the specific harmonization type flag on the player
+        # This is checked in AbilityManager.harmonize_ability
+        setattr(self, f"can_use_{harmonization_type}_harmonization", True)
+        
+        # Display a notification if UI is available
+        if hasattr(self.game, 'ui_manager') and hasattr(self.game.ui_manager, 'show_notification'):
+            self.game.ui_manager.show_notification(f"New Harmonization Type Unlocked: {harmonization_type.capitalize()}")
+            
+        return True
+        
+    def open_harmonization_ui(self):
+        """Open the ability harmonization UI"""
+        # Check if harmonization is unlocked
+        if not getattr(self, 'can_harmonize_abilities', False):
+            # Show notification if UI manager exists
+            if hasattr(self.game, 'ui_manager') and hasattr(self.game.ui_manager, 'show_notification'):
+                self.game.ui_manager.show_notification("Harmonization is not yet unlocked.")
+            return False
+        
+        # Check if harmonization UI already exists
+        if not hasattr(self.game, 'harmonization_ui'):
+            # Create harmonization UI
+            from game.harmonization_ui import HarmonizationUI
+            self.game.harmonization_ui = HarmonizationUI(self.game)
+        
+        # Show harmonization UI
+        self.game.harmonization_ui.show(self)
+        return True
+        
+    def harmonize_ability(self, ability_id):
+        """
+        Harmonize an ability
+        
+        Args:
+            ability_id (str): ID of the ability to harmonize
+            
+        Returns:
+            str or None: ID of the harmonized ability or None if harmonization failed
+        """
+        if not hasattr(self, 'ability_manager'):
+            return None
+            
+        # Check if player has any harmonization resources
+        harmonization_resource = "harmonization_essence"
+        if self.inventory.get(harmonization_resource, 0) <= 0:
+            # Show notification if UI manager exists
+            if hasattr(self.game, 'ui_manager') and hasattr(self.game.ui_manager, 'show_notification'):
+                self.game.ui_manager.show_notification(f"You need {harmonization_resource} to harmonize an ability.")
+            return None
+            
+        # Try to harmonize the ability
+        harmonized_ability_id = self.ability_manager.harmonize_ability(ability_id)
+        
+        if harmonized_ability_id:
+            # Consume the harmonization resource
+            self.inventory[harmonization_resource] = self.inventory.get(harmonization_resource, 0) - 1
+            
+            # Show notification if UI manager exists
+            if hasattr(self.game, 'ui_manager') and hasattr(self.game.ui_manager, 'show_notification'):
+                harmonized_ability = self.ability_manager.get_ability(harmonized_ability_id)
+                self.game.ui_manager.show_notification(f"Successfully harmonized into {harmonized_ability.name}!")
+                
+        return harmonized_ability_id 

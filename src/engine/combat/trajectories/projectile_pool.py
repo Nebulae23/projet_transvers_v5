@@ -1,1 +1,0 @@
-# Pool d'objets pour les projectiles

@@ -1,0 +1,28 @@
+accessibility:
+  colorblind_mode: none
+  flashing_effects: true
+  screen_shake: true
+  text_size: medium
+audio:
+  ambient_volume: 0.6
+  effects_volume: 0.9
+  master_volume: 0.8
+  music_volume: 0.7
+  mute: false
+controls:
+  controller_enabled: true
+  invert_y: false
+  mouse_sensitivity: 0.5
+gameplay:
+  auto_save: true
+  controller_vibration: true
+  day_night_cycle_duration: 1200
+  difficulty: normal
+video:
+  fullscreen: false
+  graphics_quality: medium
+  resolution:
+  - 1280
+  - 720
+  show_fps: true
+  vsync: true
