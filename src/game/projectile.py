@@ -466,3 +466,124 @@ class Projectile:
         
         if hasattr(self, 'trail_node_path'):
             self.trail_node_path.removeNode()
+
+class StraightProjectile(Projectile):
+    """A projectile that travels in a straight line"""
+    
+    def __init__(self, game, position, direction, owner=None, damage=10, speed=20.0, range=50.0):
+        """
+        Initialize a straight projectile
+        
+        Args:
+            game: Game instance
+            position: Starting position (Vec3)
+            direction: Direction vector (normalized Vec3)
+            owner: Entity that created this projectile
+            damage: Base damage
+            speed: Movement speed
+            range: Maximum travel distance
+        """
+        super().__init__(game, position, direction, speed, damage, range, owner)
+        self.trajectory_type = "straight"
+        
+        # Override visual representation for straight projectiles
+        self.create_visual_representation()
+
+
+class ArcingProjectile(Projectile):
+    """A projectile that follows an arc trajectory"""
+    
+    def __init__(self, game, position, direction, owner=None, damage=15, speed=15.0, range=40.0, 
+                 arc_height=3.0, gravity=9.8):
+        """
+        Initialize an arcing projectile
+        
+        Args:
+            game: Game instance
+            position: Starting position (Vec3)
+            direction: Direction vector (normalized Vec3)
+            owner: Entity that created this projectile
+            damage: Base damage
+            speed: Movement speed
+            range: Maximum travel distance
+            arc_height: Maximum height of the arc
+            gravity: Gravitational force to apply
+        """
+        super().__init__(game, position, direction, speed, damage, range, owner, 
+                         arc_height=arc_height, gravity=gravity)
+        self.trajectory_type = "arcing"
+        
+        # Override visual representation for arcing projectiles
+        self.create_visual_representation()
+
+
+class HomingProjectile(Projectile):
+    """A projectile that homes in on a target"""
+    
+    def __init__(self, game, position, direction, owner=None, target=None, damage=12, 
+                 speed=12.0, range=60.0, turn_rate=2.0):
+        """
+        Initialize a homing projectile
+        
+        Args:
+            game: Game instance
+            position: Starting position (Vec3)
+            direction: Direction vector (normalized Vec3)
+            owner: Entity that created this projectile
+            target: Target entity to home in on
+            damage: Base damage
+            speed: Movement speed
+            range: Maximum travel distance
+            turn_rate: How quickly the projectile can change direction
+        """
+        super().__init__(game, position, direction, speed, damage, range, owner, 
+                         homing=True, turn_rate=turn_rate)
+        self.trajectory_type = "homing"
+        self.target = target
+        
+        # Override visual representation for homing projectiles
+        self.create_visual_representation()
+        
+    def create_visual_representation(self):
+        """Create visual representation for homing projectile"""
+        super().create_visual_representation()
+        # Add a subtle glow/trail effect for homing projectiles
+        if self.visual_node:
+            # Add a custom visual effect here
+            pass
+
+
+class SpiralProjectile(Projectile):
+    """A projectile that follows a spiral trajectory"""
+    
+    def __init__(self, game, position, direction, owner=None, damage=8, speed=15.0, 
+                 range=35.0, spiral_radius=0.5, spiral_frequency=5.0):
+        """
+        Initialize a spiral projectile
+        
+        Args:
+            game: Game instance
+            position: Starting position (Vec3)
+            direction: Direction vector (normalized Vec3)
+            owner: Entity that created this projectile
+            damage: Base damage
+            speed: Movement speed
+            range: Maximum travel distance
+            spiral_radius: Radius of the spiral
+            spiral_frequency: How quickly the projectile spirals
+        """
+        super().__init__(game, position, direction, speed, damage, range, owner)
+        self.trajectory_type = "spiral"
+        self.spiral_radius = spiral_radius
+        self.spiral_frequency = spiral_frequency
+        
+        # Override visual representation for spiral projectiles
+        self.create_visual_representation()
+    
+    def create_visual_representation(self):
+        """Create visual representation for spiral projectile"""
+        super().create_visual_representation()
+        # Add a custom spiral trail
+        if self.visual_node:
+            # Add a custom visual effect here
+            pass

@@ -2,16 +2,16 @@
   "model_type": "prop",
   "prop_type": "tree",
   "procedural_params": {
-    "height": 10.087478331253658,
-    "trunk_radius": 0.4130387785868079,
-    "canopy_radius": 4.981073095382563,
+    "height": 7.6039241262300274,
+    "trunk_radius": 0.6246552292526988,
+    "canopy_radius": 2.3973101463812636,
     "species": "oak",
-    "leaf_density": 0.907711538120216
+    "leaf_density": 0.6585658415509071
   },
-  "generated_at": 1746720935.5087333,
+  "generated_at": 1746730237.4355898,
   "format": "bam",
-  "vertices": 330,
-  "triangles": 291,
+  "vertices": 1910,
+  "triangles": 491,
   "has_collision": true,
   "has_textures": true,
   "texture_resolution": "512x512"

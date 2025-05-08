@@ -9,8 +9,13 @@ tqdm==4.65.0
 colorama==0.4.6
 
 # Asset generation
-perlin-noise==1.12
-opencv-python==4.7.0.72
+perlin-noise
+opencv-python
+opensimplex==0.4.4  # Simplex noise implementation
+scikit-image==0.21.0  # Image processing for advanced texture generation
+torch==2.0.1  # Lightweight ML for texture refinement
+onnx==1.14.0  # Model format for ML inference
+onnxruntime==1.15.1  # Runtime for ONNX models
 
 # Testing Dependencies
 pytest==7.4.0
@@ -22,5 +27,5 @@ black==23.3.0
 pylint==2.17.4
 
 # Documentation
-sphinx==7.1.2
-sphinx-rtd-theme==1.2.1
+sphinx
+sphinx-rtd-theme

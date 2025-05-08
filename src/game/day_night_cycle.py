@@ -483,6 +483,24 @@ class DayNightCycle:
         else:
             print(f"Time changed to {self.get_time_of_day_name()}")
     
+    def _get_next_time_of_day(self):
+        """
+        Get the next time of day for transitions
+        
+        Returns:
+            str: Next time of day
+        """
+        if self.time_of_day == TimeOfDay.DAWN:
+            return TimeOfDay.DAY
+        elif self.time_of_day == TimeOfDay.DAY:
+            return TimeOfDay.DUSK
+        elif self.time_of_day == TimeOfDay.DUSK:
+            return TimeOfDay.NIGHT
+        elif self.time_of_day == TimeOfDay.NIGHT:
+            return TimeOfDay.MIDNIGHT
+        elif self.time_of_day == TimeOfDay.MIDNIGHT:
+            return TimeOfDay.DAWN
+    
     def interpolate_color(self, color1, color2, t):
         """
         Interpolate between two colors

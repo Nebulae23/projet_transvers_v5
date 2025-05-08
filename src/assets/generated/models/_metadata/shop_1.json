@@ -1,0 +1,39 @@
+{
+  "model_type": "building",
+  "model_subtype": "shop",
+  "building_types": [
+    "house",
+    "shop",
+    "temple",
+    "tower",
+    "wall",
+    "gate"
+  ],
+  "variations_per_type": 2,
+  "size_ranges": {
+    "house": {
+      "min_width": 5,
+      "max_width": 10,
+      "min_height": 3,
+      "max_height": 6
+    },
+    "tower": {
+      "min_width": 3,
+      "max_width": 5,
+      "min_height": 8,
+      "max_height": 15
+    },
+    "shop": {
+      "min_width": 6,
+      "max_width": 12,
+      "min_height": 3,
+      "max_height": 5
+    }
+  },
+  "use_3d_models": true,
+  "asset_id": "shop_1",
+  "asset_type": "model_3d",
+  "asset_category": "buildings",
+  "generated_at": 1746737961.85526,
+  "seed": null
+}

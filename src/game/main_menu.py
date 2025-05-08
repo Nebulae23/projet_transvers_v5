@@ -7,9 +7,10 @@ Provides the game's main menu interface
 """
 
 import os
-from panda3d.core import NodePath, Vec3, Vec4, TextNode, TransparencyAttrib
+from panda3d.core import NodePath, Vec3, Vec4, TextNode, TransparencyAttrib, PNMImage, Texture, CardMaker
 from direct.gui.OnscreenText import OnscreenText
 from direct.gui.OnscreenImage import OnscreenImage
+from direct.gui.DirectGui import DirectButton, DGG, DirectFrame
 
 from engine.ui.button import Button
 
@@ -25,9 +26,13 @@ class MainMenuScene:
         """
         self.game = game
         
+        # Store a reference to aspect2d for proper button parenting
+        self.aspect2d = self.game.aspect2d
+        
         # Create root node for all menu elements
         self.root = NodePath("main_menu_root")
         self.root.reparentTo(self.game.render2d)
+        self.root.setBin("fixed", 20)  # Ensure UI is rendered on top
         
         # Menu state
         self.current_menu = "main"  # main, options, save_browser, character_select
@@ -37,6 +42,7 @@ class MainMenuScene:
         self.options_menu_elements = []
         self.save_browser_elements = []
         self.character_select_elements = []
+        self.save_slot_elements = []  # List for dynamically created save slot elements
         
         # Background
         self.setup_background()
@@ -53,23 +59,45 @@ class MainMenuScene:
         # Create the character selection menu (initially hidden)
         self.setup_character_select()
         
-        # Show the main menu initially
+        # Hide all UI elements initially
+        self._hide_all_menu_elements()
+        
+        # Show the main menu 
         self.show_menu("main")
+        
+        # Ensure the root node is visible
+        self.root.show()
+        
+        print("Main menu initialized and shown")
     
     def setup_background(self):
         """Set up the menu background"""
         # Background image
         try:
-            self.background = OnscreenImage(
-                image="src/assets/generated/ui/main_menu_bg.png",
-                pos=(0, 0, 0),
-                scale=(1.33, 1, 1)  # Adjusted for 16:9 aspect ratio
-            )
-            self.background.setTransparency(TransparencyAttrib.MAlpha)
-            self.background.reparentTo(self.root)
-        except:
+            # Check if image exists
+            bg_path = "src/assets/generated/ui/main_menu_bg.png"
+            if not os.path.exists(bg_path):
+                print(f"Warning: Background image not found at {bg_path}")
+                raise FileNotFoundError(f"Missing file: {bg_path}")
+            
+            # Create a card for the background
+            cm = CardMaker("background_card")
+            cm.setFrameFullscreenQuad()
+            background_card = self.root.attachNewNode(cm.generate())
+            background_card.setBin("background", 10)  # Ensure it's rendered behind other elements
+            
+            # Load the texture
+            texture = self.game.loader.loadTexture(bg_path)
+            background_card.setTexture(texture)
+            
+            # Store reference to the background
+            self.background = background_card
+            
+            print(f"Background image loaded successfully from {bg_path}")
+        except Exception as e:
             # Fallback to a colored background if image not found
-            print("Warning: Main menu background image not found, using fallback")
+            print(f"Warning: Background image loading failed: {e}")
+            print("Using fallback colored background")
             from direct.gui.DirectGui import DirectFrame
             self.background = DirectFrame(
                 frameColor=(0.1, 0.1, 0.2, 1),
@@ -110,65 +138,100 @@ class MainMenuScene:
         # Container for main menu buttons
         self.main_menu_container = NodePath("main_menu_container")
         self.main_menu_container.reparentTo(self.root)
+        self.main_menu_container.setBin("fixed", 30)  # Ensure buttons render on top
         
-        # Continue button (only enabled if saves exist)
-        self.continue_button = Button(
-            self.game,
-            text="Continue Game",
-            position=(0, start_y, 0),
-            size=(button_width, button_height),
-            parent=self.main_menu_container,
-            command=self.on_continue,
-            disabled=not self._has_save_games()
+        # Create a semi-transparent panel behind the buttons
+        panel_height = button_spacing * 5 + 0.2  # Height to accommodate all buttons
+        menu_panel = DirectFrame(
+            frameColor=(0.0, 0.0, 0.1, 0.7),  # Semi-transparent dark blue
+            frameSize=(-0.5, 0.5, -panel_height/2, panel_height/2),
+            pos=(0, 0, start_y - (button_spacing * 2)),  # Center based on buttons
+            parent=self.main_menu_container
         )
+        menu_panel.setBin("fixed", 29)  # Below buttons but above background
+        
+        # Use Direct GUI buttons instead of custom Button class
+        # Place buttons directly in aspect2d for guaranteed visibility
+        # Continue button (only enabled if saves exist)
+        has_saves = self._has_save_games()
+        self.continue_button = DirectButton(
+            text="Continue Game",
+            scale=0.07,
+            pos=(0, 0, start_y),
+            frameSize=(-4, 4, -0.8, 0.8),
+            frameColor=(0.3, 0.3, 0.3, 0.8) if has_saves else (0.2, 0.2, 0.2, 0.5),
+            text_fg=(1, 1, 1, 1),
+            relief=DGG.FLAT,
+            command=self.on_continue if has_saves else None,
+            parent=self.aspect2d
+        )
+        # Store the button's parent for proper cleanup later
+        self.continue_button.original_parent = self.aspect2d
         self.main_menu_elements.append(self.continue_button)
         
         # New Game button
-        self.new_game_button = Button(
-            self.game,
+        self.new_game_button = DirectButton(
             text="New Game",
-            position=(0, start_y - button_spacing, 0),
-            size=(button_width, button_height),
-            parent=self.main_menu_container,
-            command=self.on_new_game
+            scale=0.07,
+            pos=(0, 0, start_y - button_spacing),
+            frameSize=(-4, 4, -0.8, 0.8),
+            frameColor=(0.3, 0.3, 0.3, 0.8),
+            text_fg=(1, 1, 1, 1),
+            relief=DGG.FLAT,
+            command=self.on_new_game,
+            parent=self.aspect2d
         )
+        self.new_game_button.original_parent = self.aspect2d
         self.main_menu_elements.append(self.new_game_button)
         
         # Load Game button
-        self.load_game_button = Button(
-            self.game,
+        self.load_game_button = DirectButton(
             text="Load Game",
-            position=(0, start_y - button_spacing * 2, 0),
-            size=(button_width, button_height),
-            parent=self.main_menu_container,
-            command=self.on_load_game,
-            disabled=not self._has_save_games()
+            scale=0.07,
+            pos=(0, 0, start_y - button_spacing * 2),
+            frameSize=(-4, 4, -0.8, 0.8),
+            frameColor=(0.3, 0.3, 0.3, 0.8) if has_saves else (0.2, 0.2, 0.2, 0.5),
+            text_fg=(1, 1, 1, 1),
+            relief=DGG.FLAT,
+            command=self.on_load_game if has_saves else None,
+            parent=self.aspect2d
         )
+        self.load_game_button.original_parent = self.aspect2d
         self.main_menu_elements.append(self.load_game_button)
         
         # Options button
-        self.options_button = Button(
-            self.game,
+        self.options_button = DirectButton(
             text="Options",
-            position=(0, start_y - button_spacing * 3, 0),
-            size=(button_width, button_height),
-            parent=self.main_menu_container,
-            command=self.on_options
+            scale=0.07,
+            pos=(0, 0, start_y - button_spacing * 3),
+            frameSize=(-4, 4, -0.8, 0.8),
+            frameColor=(0.3, 0.3, 0.3, 0.8),
+            text_fg=(1, 1, 1, 1),
+            relief=DGG.FLAT,
+            command=self.on_options,
+            parent=self.aspect2d
         )
+        self.options_button.original_parent = self.aspect2d
         self.main_menu_elements.append(self.options_button)
         
         # Quit button
-        self.quit_button = Button(
-            self.game,
+        self.quit_button = DirectButton(
             text="Quit",
-            position=(0, start_y - button_spacing * 4, 0),
-            size=(button_width, button_height),
-            parent=self.main_menu_container,
-            command=self.on_quit
+            scale=0.07,
+            pos=(0, 0, start_y - button_spacing * 4),
+            frameSize=(-4, 4, -0.8, 0.8),
+            frameColor=(0.3, 0.3, 0.3, 0.8),
+            text_fg=(1, 1, 1, 1),
+            relief=DGG.FLAT,
+            command=self.on_quit,
+            parent=self.aspect2d
         )
+        self.quit_button.original_parent = self.aspect2d
         self.main_menu_elements.append(self.quit_button)
         
-        # Hide the main menu initially
+        print("Main menu buttons created with DirectButton and parented to aspect2d")
+        
+        # Hide initially until explicitly shown
         self.main_menu_container.hide()
     
     def setup_options_menu(self):
@@ -203,13 +266,16 @@ class MainMenuScene:
         self.options_menu_elements.append(self.options_placeholder)
         
         # Back button
-        self.options_back_button = Button(
-            self.game,
+        self.options_back_button = DirectButton(
             text="Back",
-            position=(0, -0.6, 0),
-            size=(0.4, 0.1),
-            parent=self.options_menu_container,
-            command=lambda: self.show_menu("main")
+            scale=0.07,
+            pos=(0, 0, -0.6),
+            frameSize=(-4, 4, -0.8, 0.8),
+            frameColor=(0.3, 0.3, 0.3, 0.8),
+            text_fg=(1, 1, 1, 1),
+            relief=DGG.FLAT,
+            command=lambda: self.show_menu("main"),
+            parent=self.options_menu_container
         )
         self.options_menu_elements.append(self.options_back_button)
         
@@ -344,30 +410,110 @@ class MainMenuScene:
         Args:
             menu_name: Name of the menu to show ("main", "options", "save_browser", "character_select")
         """
-        # Hide all menus first
+        from direct.gui.DirectGui import DGG
+        
+        print(f"Showing menu: {menu_name}")
+        
+        # Hide all menu elements first
+        self._hide_all_menu_elements()
+        
+        # Show the requested menu
+        if menu_name == "main":
+            # Show main menu buttons
+            for element in self.main_menu_elements:
+                if hasattr(element, 'show'):
+                    element.show()
+            
+            # For DirectButtons, make sure they're in their proper position
+            if hasattr(self, 'continue_button') and self.continue_button is not None:
+                self.continue_button.show()
+            if hasattr(self, 'new_game_button') and self.new_game_button is not None:
+                self.new_game_button.show()
+            if hasattr(self, 'load_game_button') and self.load_game_button is not None:
+                self.load_game_button.show()
+            if hasattr(self, 'options_button') and self.options_button is not None:
+                self.options_button.show()
+            if hasattr(self, 'quit_button') and self.quit_button is not None:
+                self.quit_button.show()
+                
+            # Show the container (for the panel)
+            self.main_menu_container.show()
+                
+            print("Main menu elements shown")
+            
+            # Update continue and load buttons based on save existence
+            has_saves = self._has_save_games()
+            
+            # DirectButtons don't have enable/disable methods, so update their state directly
+            if has_saves:
+                self.continue_button["state"] = DGG.NORMAL
+                self.continue_button["frameColor"] = (0.3, 0.3, 0.3, 0.8)
+                self.continue_button["command"] = self.on_continue
+                
+                self.load_game_button["state"] = DGG.NORMAL
+                self.load_game_button["frameColor"] = (0.3, 0.3, 0.3, 0.8)
+                self.load_game_button["command"] = self.on_load_game
+            else:
+                self.continue_button["state"] = DGG.DISABLED
+                self.continue_button["frameColor"] = (0.2, 0.2, 0.2, 0.5)
+                self.continue_button["command"] = None
+                
+                self.load_game_button["state"] = DGG.DISABLED
+                self.load_game_button["frameColor"] = (0.2, 0.2, 0.2, 0.5)
+                self.load_game_button["command"] = None
+        elif menu_name == "options":
+            self.options_menu_container.show()
+            # Show option menu elements
+            for element in self.options_menu_elements:
+                if hasattr(element, 'show'):
+                    element.show()
+        elif menu_name == "save_browser":
+            # Populate save slots before showing
+            self._populate_save_slots()
+            self.save_browser_container.show()
+            # Show save browser elements
+            for element in self.save_browser_elements:
+                if hasattr(element, 'show'):
+                    element.show()
+        elif menu_name == "character_select":
+            self.character_select_container.show()
+            # Show character select elements
+            for element in self.character_select_elements:
+                if hasattr(element, 'show'):
+                    element.show()
+        
+        # Update current menu
+        self.current_menu = menu_name
+    
+    def _hide_all_menu_elements(self):
+        """Hide all menu elements across all menus"""
+        # Hide containers
         self.main_menu_container.hide()
         self.options_menu_container.hide()
         self.save_browser_container.hide()
         self.character_select_container.hide()
         
-        # Show the requested menu
-        if menu_name == "main":
-            self.main_menu_container.show()
-            # Update continue and load buttons based on save existence
-            has_saves = self._has_save_games()
-            self.continue_button.enable() if has_saves else self.continue_button.disable()
-            self.load_game_button.enable() if has_saves else self.load_game_button.disable()
-        elif menu_name == "options":
-            self.options_menu_container.show()
-        elif menu_name == "save_browser":
-            # Populate save slots before showing
-            self._populate_save_slots()
-            self.save_browser_container.show()
-        elif menu_name == "character_select":
-            self.character_select_container.show()
-        
-        # Update current menu
-        self.current_menu = menu_name
+        # Hide main menu elements
+        for element in self.main_menu_elements:
+            if hasattr(element, 'hide'):
+                element.hide()
+                
+        # Hide other menu elements
+        for element in self.options_menu_elements:
+            if hasattr(element, 'hide'):
+                element.hide()
+                
+        for element in self.save_browser_elements:
+            if hasattr(element, 'hide'):
+                element.hide()
+                
+        for element in self.character_select_elements:
+            if hasattr(element, 'hide'):
+                element.hide()
+                
+        for element in self.save_slot_elements:
+            if hasattr(element, 'hide'):
+                element.hide()
     
     def _has_save_games(self):
         """
@@ -486,8 +632,19 @@ class MainMenuScene:
                 self.on_load_slot(most_recent["slot_name"])
     
     def on_new_game(self):
-        """Handle new game button click - show character selection"""
-        self.show_menu("character_select")
+        """Handle new game button click"""
+        # Hide all menu elements
+        self._hide_all_menu_elements()
+        
+        # Hide the main menu
+        self.hide()
+        
+        # Call start_new_game on the game instance if available
+        if hasattr(self.game, 'start_new_game'):
+            print("Starting new game...")
+            self.game.start_new_game()
+        else:
+            print("Warning: start_new_game method not found on game instance")
     
     def on_load_game(self):
         """Handle load game button click - show save browser"""
@@ -624,6 +781,16 @@ class MainMenuScene:
         ):
             if hasattr(element, 'cleanup'):
                 element.cleanup()
+            elif hasattr(element, 'destroy'):
+                element.destroy()
         
         # Remove the root node
-        self.root.removeNode() 
+        self.root.removeNode()
+
+    def hide(self):
+        """Hide the main menu"""
+        # Hide all elements
+        self._hide_all_menu_elements()
+        
+        # Hide the root node to ensure everything is hidden
+        self.root.hide() 

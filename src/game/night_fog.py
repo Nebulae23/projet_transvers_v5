@@ -25,6 +25,7 @@ class NightFog:
         
         # Fog properties
         self.active = False
+        self.enabled = False  # For compatibility with code that checks .enabled
         self.intensity = 0.0  # 0.0 to 1.0 scale
         self.damage_enabled = True
         self.spawn_enabled = True
@@ -161,6 +162,7 @@ class NightFog:
         
         # Ensure fog is only active when intensity > 0
         self.active = self.intensity > 0.0
+        self.enabled = self.active  # Keep enabled in sync with active
     
     def _apply_adaptive_difficulty(self):
         """Apply adaptive difficulty settings to fog parameters"""
@@ -459,30 +461,56 @@ class NightFog:
             print(f"  Max Tendrils: {self.max_tendrils}")
     
     def toggle(self):
-        """Toggle night fog on/off"""
+        """Toggle the night fog on/off"""
+        # Toggle active state
         self.active = not self.active
+        self.enabled = self.active  # Keep enabled in sync with active
         
-        # Update visual effects based on new state
-        if self.active:
-            # Force intensity to be visible
-            self.intensity = 0.7 if self.intensity < 0.1 else self.intensity
-            print("Night fog activated")
-        else:
-            # Keep intensity value but disable fog
-            print("Night fog deactivated")
+        # If turning off, reset intensity
+        if not self.active:
+            self.intensity = 0.0
             
-        # Update visual effects
+        # If turning on, set to medium intensity
+        else:
+            self.intensity = 0.5
+            
+        # Update visual effects immediately
         self._update_visual_effects()
+        
+        # Debug information
+        if hasattr(self.game, 'message_system'):
+            state = "On" if self.active else "Off"
+            self.game.message_system.add_message(f"Night Fog: {state}")
+        else:
+            print(f"Night Fog toggled: {'On' if self.active else 'Off'}")
     
     def set_intensity(self, intensity):
         """
-        Set fog intensity directly (mainly for debugging)
+        Set the fog intensity directly
         
         Args:
-            intensity: Fog intensity (0.0 to 1.0)
+            intensity (float): Fog intensity (0.0 to 1.0)
         """
+        # Clamp intensity to valid range
         self.intensity = max(0.0, min(1.0, intensity))
-        self.active = self.intensity > 0.0
         
-        # Update visuals immediately
+        # Update active state based on intensity
+        self.active = self.intensity > 0.0
+        self.enabled = self.active  # Keep enabled in sync with active
+        
+        # Update visual effects immediately
+        self._update_visual_effects()
+        
+    def enable(self):
+        """Enable the night fog"""
+        self.active = True
+        self.enabled = True
+        self.intensity = 0.7  # Start at moderate intensity
+        self._update_visual_effects()
+        
+    def disable(self):
+        """Disable the night fog"""
+        self.active = False
+        self.enabled = False
+        self.intensity = 0.0
         self._update_visual_effects() 

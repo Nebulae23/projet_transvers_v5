@@ -2,16 +2,16 @@
   "model_type": "prop",
   "prop_type": "sign",
   "procedural_params": {
-    "height": 1.924609399548702,
-    "width": 0.9013030571814951,
+    "height": 1.334707345187219,
+    "width": 1.2845522787980252,
     "style": "post",
     "material": "wood",
     "has_text": true
   },
-  "generated_at": 1746720935.5162673,
+  "generated_at": 1746730237.4408686,
   "format": "bam",
-  "vertices": 1622,
-  "triangles": 634,
+  "vertices": 1599,
+  "triangles": 435,
   "has_collision": true,
   "has_textures": true,
   "texture_resolution": "512x512"

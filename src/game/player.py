@@ -362,30 +362,31 @@ class Player:
             self.show_current_ability()
     
     def show_current_ability(self):
-        """Display the current ability to the player"""
-        # Get current ability
-        if len(self.ability_manager.active_abilities) > self.current_ability_slot:
-            ability_id = self.ability_manager.active_abilities[self.current_ability_slot]
-            ability = self.ability_manager.get_ability(ability_id)
+        """Show the current abilities in the UI"""
+        # Make sure the player has a class
+        if not self.character_class:
+            print("No class selected yet.")
+            return
             
-            if ability:
-                print(f"Current ability: {ability.name}")
+        # Get ability info from ability manager
+        if hasattr(self, 'ability_manager'):
+            primary = getattr(self, 'current_primary_ability', "None")
+            secondary = getattr(self, 'current_secondary_ability', "None")
+            
+            # Update the display if UI elements exist
+            if hasattr(self.game, 'ability_box'):
+                self.game.ability_box.update_value(0, primary)
+                self.game.ability_box.update_value(1, secondary)
                 
-                # Update UI if available
-                if hasattr(self.game, 'weapon_text'):
-                    self.game.weapon_text.setText(f"Current Ability: {ability.name} ({self.current_ability_slot+1})")
-                
-                # Change player color to match ability (for visual feedback)
-                if hasattr(self, 'model') and not self.model.isEmpty():
-                    # Use different colors based on ability type
-                    if ability.ability_type.value == "projectile":
-                        self.model.setColor(0.2, 0.6, 1.0, 1)  # Blue
-                    elif ability.ability_type.value == "melee":
-                        self.model.setColor(1.0, 0.4, 0.2, 1)  # Orange
-                    elif ability.ability_type.value == "area":
-                        self.model.setColor(0.4, 1.0, 0.4, 1)  # Green
-                    else:
-                        self.model.setColor(0.8, 0.8, 0.2, 1)  # Yellow
+            print(f"Current abilities: Primary - {primary}, Secondary - {secondary}")
+            
+            # Show a notification if notification system exists
+            if hasattr(self.game, 'notification_system'):
+                self.game.notification_system.add_notification(
+                    f"Selected {self.character_class.value} class",
+                    duration=3.0,
+                    type="success"
+                )
     
     def start_dodge(self):
         """Start a dodge action"""

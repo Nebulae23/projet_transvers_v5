@@ -2,15 +2,15 @@
   "model_type": "prop",
   "prop_type": "rock",
   "procedural_params": {
-    "size": 0.7714785076808945,
-    "roughness": 0.7330551682756805,
-    "shape": "flat",
-    "moss_coverage": 0.35950344771892406
+    "size": 1.0061171331642356,
+    "roughness": 0.5576753313112883,
+    "shape": "rounded",
+    "moss_coverage": 0.3866024435785343
   },
-  "generated_at": 1746720935.5121274,
+  "generated_at": 1746730237.4371464,
   "format": "bam",
-  "vertices": 1032,
-  "triangles": 252,
+  "vertices": 1093,
+  "triangles": 732,
   "has_collision": true,
   "has_textures": true,
   "texture_resolution": "512x512"

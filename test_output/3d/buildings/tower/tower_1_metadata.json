@@ -2,16 +2,16 @@
   "model_type": "building",
   "building_type": "tower",
   "procedural_params": {
-    "width": 4.378793003516139,
-    "depth": 3.3214418012867744,
-    "height": 15.343060029726178,
-    "shape": "octagonal",
-    "material": "brick"
+    "width": 3.0988181126269874,
+    "depth": 3.8637566675279116,
+    "height": 17.567802910300436,
+    "shape": "square",
+    "material": "stone"
   },
-  "generated_at": 1746720935.5065334,
+  "generated_at": 1746730237.4328172,
   "format": "bam",
-  "vertices": 3371,
-  "triangles": 2681,
+  "vertices": 1655,
+  "triangles": 2619,
   "has_collision": true,
   "has_textures": true,
   "texture_resolution": "1024x1024"

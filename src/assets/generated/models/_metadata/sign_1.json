@@ -1,0 +1,24 @@
+{
+  "model_type": "prop",
+  "model_subtype": "sign",
+  "prop_types": [
+    "tree",
+    "rock",
+    "bush",
+    "flower",
+    "chest",
+    "sign"
+  ],
+  "variations_per_type": 2,
+  "complexity_levels": [
+    "low",
+    "medium",
+    "high"
+  ],
+  "use_3d_models": true,
+  "asset_id": "sign_1",
+  "asset_type": "model_3d",
+  "asset_category": "props",
+  "generated_at": 1746737961.878397,
+  "seed": null
+}

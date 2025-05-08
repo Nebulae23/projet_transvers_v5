@@ -18,366 +18,573 @@ from tqdm import tqdm
 from src.tools.asset_generator.base_generator import AssetGenerator, AssetType, AssetCategory
 
 # Importer les générateurs spécifiques
-# Note: Nous les importerons de manière conditionnelle pour gérer les dépendances manquantes
+from src.tools.asset_generator.sprite_generator import SpriteGenerator, SpriteType, CharacterClass
+from src.tools.asset_generator.model_generator import ModelGenerator, ModelType
+from src.tools.asset_generator.terrain_generator import TerrainGenerator
+from src.tools.asset_generator.effect_generator import EffectGenerator, EffectType
+from src.tools.asset_generator.animation_generator import AnimationGenerator, AnimationType
+from src.tools.asset_generator.ui_generator import UIGenerator
+from src.tools.asset_generator.sound_generator import SoundGenerator, SoundType
+
+# Importer le nouveau générateur hybride
+from src.tools.asset_generator.hybrid_generator import HybridGenerator, MaterialPresets, PBRMaps
 
 class AssetGeneratorSystem:
-    """Système central pour la génération d'assets"""
+    """Système central de génération d'assets pour Nightfall Defenders"""
     
-    def __init__(self, base_output_dir, config=None):
+    def __init__(self, output_base_dir="./src/assets/generated", config=None):
         """
         Initialise le système de génération d'assets
         
         Args:
-            base_output_dir (str): Répertoire de base pour les assets générés
-            config (dict, optional): Configuration du système
+            output_base_dir (str): Répertoire de base pour les assets générés
+            config (dict, optional): Configuration pour la génération
         """
-        self.base_output_dir = base_output_dir
+        # Charger la configuration
         self.config = config or {}
         
-        # Créer les répertoires de base
-        os.makedirs(base_output_dir, exist_ok=True)
+        # Configurer les répertoires de sortie
+        self.output_base_dir = output_base_dir
+        self.output_dirs = {
+            AssetCategory.CHARACTER: os.path.join(output_base_dir, "characters"),
+            AssetCategory.ENVIRONMENT: os.path.join(output_base_dir, "environment"),
+            AssetCategory.BUILDING: os.path.join(output_base_dir, "buildings"),
+            AssetCategory.PROP: os.path.join(output_base_dir, "props"),
+            AssetCategory.UI: os.path.join(output_base_dir, "ui"),
+            AssetCategory.EFFECT: os.path.join(output_base_dir, "effects")
+        }
         
-        # Créer les sous-répertoires pour les différentes catégories
-        for category in AssetCategory:
-            os.makedirs(os.path.join(base_output_dir, category.value), exist_ok=True)
+        # Créer les répertoires de sortie
+        for directory in self.output_dirs.values():
+            os.makedirs(directory, exist_ok=True)
         
-        # Initialiser les générateurs disponibles
+        # Initialiser les générateurs spécifiques
         self.generators = {}
         self._init_generators()
         
-        # Statistiques de génération
-        self.stats = {
-            "start_time": None,
-            "end_time": None,
-            "total_assets": 0,
-            "errors": 0,
-            "by_type": {}
+        # Statistiques
+        self.generation_stats = {
+            "total_assets_generated": 0,
+            "total_generation_time": 0,
+            "assets_by_category": {}
         }
-    
-    def _init_generators(self):
-        """Initialise les générateurs d'assets disponibles"""
-        # Vérifier et initialiser le générateur de sprites 2D
-        try:
-            from src.tools.asset_generator.sprite_generator import SpriteGenerator
-            sprite_dir = os.path.join(self.base_output_dir, AssetCategory.CHARACTER.value)
-            self.generators[AssetType.SPRITE_2D] = SpriteGenerator(sprite_dir)
-            print("Générateur de sprites 2D initialisé")
-        except ImportError as e:
-            print(f"Impossible d'initialiser le générateur de sprites 2D: {e}")
         
-        # Vérifier et initialiser le générateur de modèles 3D
-        try:
-            from src.tools.asset_generator.model_generator import ModelGenerator
-            model_dir = os.path.join(self.base_output_dir, AssetCategory.BUILDING.value)
-            self.generators[AssetType.MODEL_3D] = ModelGenerator(model_dir)
-            print("Générateur de modèles 3D initialisé")
-        except ImportError as e:
-            print(f"Impossible d'initialiser le générateur de modèles 3D: {e}")
-        
-        # Vérifier et initialiser le générateur de terrain
-        try:
-            from src.tools.asset_generator.terrain_generator import TerrainGenerator
-            terrain_dir = os.path.join(self.base_output_dir, AssetCategory.ENVIRONMENT.value)
-            self.generators[AssetType.TERRAIN] = TerrainGenerator(terrain_dir)
-            print("Générateur de terrain initialisé")
-        except ImportError as e:
-            print(f"Impossible d'initialiser le générateur de terrain: {e}")
-        
-        # Vérifier et initialiser le générateur d'effets
-        try:
-            from src.tools.asset_generator.effect_generator import EffectGenerator
-            effect_dir = os.path.join(self.base_output_dir, AssetCategory.EFFECT.value)
-            self.generators[AssetType.EFFECT] = EffectGenerator(effect_dir)
-            print("Générateur d'effets initialisé")
-        except ImportError as e:
-            print(f"Impossible d'initialiser le générateur d'effets: {e} (sera ajouté ultérieurement)")
-    
-    def get_generator(self, asset_type):
+    def _load_config(self, config_file=None):
         """
-        Récupère un générateur par type d'asset
+        Charge la configuration depuis un fichier JSON
         
         Args:
-            asset_type (AssetType): Type d'asset à générer
+            config_file (str, optional): Chemin vers le fichier de configuration
             
         Returns:
-            AssetGenerator or None: Le générateur approprié ou None si non disponible
+            dict: Configuration chargée
         """
-        return self.generators.get(asset_type)
+        if config_file is None:
+            config_file = os.path.join("src", "assets", "configs", "asset_generation_config.json")
+            
+        if not os.path.exists(config_file):
+            print(f"Fichier de configuration non trouvé: {config_file}")
+            print("Utilisation de la configuration par défaut")
+            return {}
+            
+        try:
+            with open(config_file, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Erreur lors du chargement de la configuration: {e}")
+            return {}
     
-    def generate_asset(self, asset_type, asset_id, params, seed=None):
+    def _init_generators(self):
+        """Initialise les générateurs spécifiques pour chaque type d'asset"""
+        try:
+            # Générateur de sprites 2D
+            sprite_output_dir = os.path.join(self.output_base_dir, "sprites")
+            self.generators[AssetType.SPRITE_2D] = SpriteGenerator(sprite_output_dir)
+            
+            # Générateur de modèles 3D
+            model_output_dir = os.path.join(self.output_base_dir, "models")
+            self.generators[AssetType.MODEL_3D] = ModelGenerator(model_output_dir)
+            
+            # Générateur de terrain
+            terrain_output_dir = os.path.join(self.output_base_dir, "terrain")
+            self.generators[AssetType.TERRAIN] = TerrainGenerator(terrain_output_dir)
+            
+            # Générateur d'effets
+            effect_output_dir = os.path.join(self.output_base_dir, "effects")
+            self.generators[AssetType.EFFECT] = EffectGenerator(effect_output_dir)
+            
+            # Générateur d'animations
+            animation_output_dir = os.path.join(self.output_base_dir, "animations")
+            self.generators[AssetType.ANIMATION] = AnimationGenerator(animation_output_dir)
+            
+            # Générateur d'interface utilisateur
+            ui_output_dir = os.path.join(self.output_base_dir, "ui")
+            self.generators["ui"] = UIGenerator(ui_output_dir)
+            
+            # Générateur de sons
+            sound_output_dir = os.path.join(self.output_base_dir, "..", "sounds")
+            self.generators["sound"] = SoundGenerator(sound_output_dir)
+            
+            # Générateur hybride pour matériaux PBR
+            hybrid_output_dir = os.path.join(self.output_base_dir, "materials")
+            self.generators["pbr_material"] = HybridGenerator(hybrid_output_dir)
+            
+        except Exception as e:
+            print(f"Erreur lors de l'initialisation des générateurs: {e}")
+    
+    def generate_asset(self, asset_type, asset_category, asset_id, params=None, seed=None):
         """
-        Génère un asset spécifique
+        Génère un asset du type et de la catégorie spécifiés
         
         Args:
             asset_type (AssetType): Type d'asset à générer
+            asset_category (AssetCategory): Catégorie de l'asset
             asset_id (str): Identifiant unique pour l'asset
-            params (dict): Paramètres pour la génération
+            params (dict, optional): Paramètres spécifiques pour la génération
             seed (int, optional): Seed pour la génération déterministe
             
         Returns:
-            object: L'asset généré ou None si échec
+            tuple: (asset généré, chemin où il a été sauvegardé)
         """
-        generator = self.get_generator(asset_type)
-        if not generator:
-            print(f"Pas de générateur disponible pour {asset_type}")
-            self.stats["errors"] += 1
-            return None
+        # Vérifier si le type d'asset est supporté
+        if asset_type not in self.generators and asset_type != "pbr_material":
+            print(f"Type d'asset non supporté: {asset_type}")
+            return None, None
+            
+        # Préparer les paramètres
+        if params is None:
+            params = {}
+            
+        # Ajouter les paramètres de configuration généraux
+        category_key = asset_category.value if hasattr(asset_category, 'value') else asset_category
+        if category_key in self.config:
+            params.update(self.config[category_key])
+            
+        # Chemin de sortie
+        output_dir = self.output_dirs.get(asset_category, self.output_base_dir)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
         
-        try:
-            asset = generator.generate_with_cache(asset_id, params, seed)
+        # Ensure file extension is present
+        if not asset_id.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tga')):
+            # Add .png as default extension for images
+            output_path = os.path.join(output_dir, f"{asset_id}.png")
+        else:
+            output_path = os.path.join(output_dir, f"{asset_id}")
             
-            # Enregistrer des métadonnées pour l'asset
-            metadata = {
+        # Mesurer le temps de génération
+        start_time = time.time()
+        
+        # Générer l'asset
+        if asset_type == "pbr_material":
+            generator = self.generators["pbr_material"]
+        else:
+            generator = self.generators[asset_type]
+            
+        asset = generator.generate_with_cache(asset_id, params, seed)
+        
+        # Sauvegarder l'asset
+        if asset:
+            generator.save_asset(asset, output_path)
+            
+            # Sauvegarder les métadonnées
+            metadata = params.copy()
+            metadata.update({
                 "asset_id": asset_id,
-                "asset_type": asset_type.value,
-                "params": params,
+                "asset_type": asset_type.value if hasattr(asset_type, 'value') else asset_type,
+                "asset_category": asset_category.value if hasattr(asset_category, 'value') else asset_category,
+                "generated_at": time.time(),
                 "seed": seed
-            }
+            })
+            
             generator.save_metadata(asset_id, metadata)
-            
-            # Mettre à jour les statistiques
-            self.stats["total_assets"] += 1
-            self.stats["by_type"][asset_type.value] = self.stats["by_type"].get(asset_type.value, 0) + 1
-            
-            return asset
-        except Exception as e:
-            print(f"Erreur lors de la génération de l'asset {asset_id}: {e}")
-            self.stats["errors"] += 1
-            return None
+        
+        # Mettre à jour les statistiques
+        generation_time = time.time() - start_time
+        self.generation_stats["total_assets_generated"] += 1
+        self.generation_stats["total_generation_time"] += generation_time
+        
+        if category_key not in self.generation_stats["assets_by_category"]:
+            self.generation_stats["assets_by_category"][category_key] = 0
+        self.generation_stats["assets_by_category"][category_key] += 1
+        
+        return asset, output_path
     
-    def save_asset(self, asset_type, asset, filepath, **kwargs):
+    def generate_pbr_material(self, material_type, asset_id, size=(512, 512), context=None, age_factor=0.0, use_ml=True, seed=None):
         """
-        Sauvegarde un asset généré
+        Génère un matériau PBR en utilisant le générateur hybride
         
         Args:
-            asset_type (AssetType): Type d'asset
-            asset: L'asset à sauvegarder
-            filepath (str): Chemin de destination
-            **kwargs: Paramètres supplémentaires pour la sauvegarde
+            material_type (str): Type de matériau (stone, wood, metal, etc.)
+            asset_id (str): Identifiant du matériau
+            size (tuple): Dimensions des textures (largeur, hauteur)
+            context (str, optional): Contexte environnemental (snow, desert, wet)
+            age_factor (float): Facteur de vieillissement (0.0-1.0)
+            use_ml (bool): Activer le raffinement ML
+            seed (int, optional): Seed pour génération déterministe
             
         Returns:
-            bool: True si la sauvegarde a réussi
+            tuple: (maps PBR générées, répertoire où elles ont été sauvegardées)
         """
-        generator = self.get_generator(asset_type)
-        if not generator:
-            print(f"Pas de générateur disponible pour sauvegarder {asset_type}")
-            return False
+        params = {
+            "material": material_type,
+            "size": size,
+            "use_ml_refinement": use_ml,
+            "apply_context_rules": context is not None or age_factor > 0,
+            "add_details": True,
+            "add_micro_details": True,
+        }
         
-        return generator.save_asset(asset, filepath, **kwargs)
+        # Ajouter les paramètres contextuels
+        if context or age_factor > 0:
+            params["context"] = {}
+            
+            if context:
+                params["context"]["environment"] = context
+                
+            if age_factor > 0:
+                params["context"]["age_factor"] = age_factor
+        
+        # Récupérer les préréglages du matériau depuis la configuration
+        if "pbr_materials" in self.config and "presets" in self.config["pbr_materials"]:
+            if material_type in self.config["pbr_materials"]["presets"]:
+                material_preset = self.config["pbr_materials"]["presets"][material_type]
+                params.update(material_preset)
+        
+        # Générer le matériau en utilisant la méthode generate_asset
+        return self.generate_asset("pbr_material", "materials", asset_id, params, seed)
     
-    def generate_all(self, config=None, seed=None):
+    def batch_generate(self, batch_config, output_dir=None):
         """
-        Génère tous les assets définis dans la configuration
+        Génère un lot d'assets selon une configuration de batch
         
         Args:
-            config (dict, optional): Configuration spécifique pour cette génération
-            seed (int, optional): Seed de base pour la génération
+            batch_config (dict): Configuration pour la génération par lots
+            output_dir (str, optional): Répertoire de sortie pour ce lot
             
         Returns:
             dict: Statistiques de génération
         """
-        config = config or self.config
-        if not config:
-            print("Pas de configuration pour la génération d'assets")
-            return self.stats
+        # Utiliser le répertoire spécifié ou le répertoire par défaut
+        base_output_dir = output_dir or self.output_base_dir
         
-        self.stats["start_time"] = time.time()
+        # Vérifier que la configuration de batch est valide
+        if not isinstance(batch_config, dict) or not batch_config:
+            print("Configuration de batch invalide ou vide")
+            return {"error": "Configuration invalide", "assets_generated": 0}
         
-        # Seed global pour la reproductibilité
+        # Initialiser les statistiques du batch
+        batch_stats = {
+            "total_assets": 0,
+            "successful_assets": 0,
+            "failed_assets": 0,
+            "generation_time": 0,
+            "assets_by_category": {},
+            "assets_by_type": {}
+        }
+        
+        start_time = time.time()
+        
+        # Traiter chaque groupe d'assets dans la configuration
+        for group_name, group_config in batch_config.items():
+            print(f"Génération du groupe d'assets: {group_name}")
+            
+            # Extraire les paramètres communs du groupe
+            asset_type = group_config.get("asset_type")
+            asset_category = group_config.get("asset_category")
+            base_params = group_config.get("base_params", {})
+            variations = group_config.get("variations", [{}])
+            count = group_config.get("count", 1)
+            use_seed = group_config.get("use_seed", False)
+            base_seed = group_config.get("base_seed", random.randint(0, 10000))
+            
+            # Vérifier les paramètres obligatoires
+            if not asset_type or not asset_category:
+                print(f"Configuration incomplète pour le groupe {group_name}, ignoré")
+                continue
+            
+            # Créer un sous-répertoire pour ce groupe si spécifié
+            group_output_dir = base_output_dir
+            if group_config.get("create_subdir", False):
+                group_output_dir = os.path.join(base_output_dir, group_name)
+                os.makedirs(group_output_dir, exist_ok=True)
+            
+            # Générer les assets pour ce groupe
+            successful_in_group = 0
+            
+            # Utiliser tqdm pour afficher une barre de progression
+            with tqdm(total=count * len(variations), desc=f"Groupe {group_name}") as pbar:
+                for i in range(count):
+                    for v_idx, variation in enumerate(variations):
+                        # Construire l'ID de l'asset
+                        asset_id = f"{group_name}_{i}_{v_idx}" if len(variations) > 1 else f"{group_name}_{i}"
+                        
+                        # Combiner les paramètres de base avec la variation
+                        params = base_params.copy()
+                        params.update(variation)
+                        
+                        # Générer un seed déterministe si demandé
+                        seed = None
+                        if use_seed:
+                            seed = base_seed + i * 100 + v_idx
+                        
+                        try:
+                            # Générer l'asset
+                            asset, path = self.generate_asset(
+                                asset_type, 
+                                asset_category, 
+                                asset_id, 
+                                params, 
+                                seed
+                            )
+                            
+                            if asset:
+                                successful_in_group += 1
+                                
+                                # Mettre à jour les statistiques par catégorie
+                                category_key = asset_category
+                                if hasattr(asset_category, 'value'):
+                                    category_key = asset_category.value
+                                
+                                if category_key not in batch_stats["assets_by_category"]:
+                                    batch_stats["assets_by_category"][category_key] = 0
+                                batch_stats["assets_by_category"][category_key] += 1
+                                
+                                # Mettre à jour les statistiques par type
+                                type_key = asset_type
+                                if hasattr(asset_type, 'value'):
+                                    type_key = asset_type.value
+                                
+                                if type_key not in batch_stats["assets_by_type"]:
+                                    batch_stats["assets_by_type"][type_key] = 0
+                                batch_stats["assets_by_type"][type_key] += 1
+                        
+                        except Exception as e:
+                            print(f"Erreur lors de la génération de {asset_id}: {e}")
+                            batch_stats["failed_assets"] += 1
+                        
+                        # Mettre à jour la barre de progression
+                        pbar.update(1)
+            
+            # Mettre à jour les statistiques du batch
+            batch_stats["total_assets"] += count * len(variations)
+            batch_stats["successful_assets"] += successful_in_group
+            
+            print(f"Génération du groupe {group_name} terminée: {successful_in_group}/{count * len(variations)} assets générés avec succès")
+        
+        # Calculer le temps total de génération
+        batch_stats["generation_time"] = time.time() - start_time
+        
+        print(f"Génération du batch terminée en {batch_stats['generation_time']:.2f} secondes")
+        print(f"Total: {batch_stats['successful_assets']}/{batch_stats['total_assets']} assets générés avec succès")
+        
+        return batch_stats
+
+    def generate_all(self, seed=None):
+        """
+        Génère tous les assets selon la configuration
+        
+        Args:
+            seed (int, optional): Seed pour la génération déterministe
+            
+        Returns:
+            dict: Statistiques de génération
+        """
         if seed is not None:
             random.seed(seed)
-            master_seed = seed
-        else:
-            master_seed = random.randint(1, 10000)
-            random.seed(master_seed)
         
-        print(f"Génération d'assets avec le seed maître: {master_seed}")
+        start_time = time.time()
+        total_assets = 0
+        errors = 0
         
-        # Génération des personnages
-        if "characters" in config:
-            self._generate_characters(config["characters"], master_seed)
-        
-        # Génération du terrain
-        if "terrain" in config:
-            self._generate_terrain(config["terrain"], master_seed)
-        
-        # Génération des props
-        if "props" in config:
-            self._generate_props(config["props"], master_seed)
-        
-        # Génération des bâtiments
-        if "buildings" in config:
-            self._generate_buildings(config["buildings"], master_seed)
-        
-        # Génération de l'UI
-        if "ui" in config:
-            self._generate_ui(config["ui"], master_seed)
-        
-        # Génération des effets
-        if "effects" in config:
-            self._generate_effects(config["effects"], master_seed)
-        
-        self.stats["end_time"] = time.time()
-        self.stats["duration"] = self.stats["end_time"] - self.stats["start_time"]
-        
-        print(f"Génération terminée en {self.stats['duration']:.2f} secondes")
-        print(f"Total d'assets générés: {self.stats['total_assets']}")
-        print(f"Erreurs: {self.stats['errors']}")
-        
-        return self.stats
-    
-    def _generate_characters(self, config, master_seed):
-        """Génère les assets de personnages"""
-        print("Génération des personnages...")
-        
-        generator = self.get_generator(AssetType.SPRITE_2D)
-        if not generator:
-            print("Générateur de sprites non disponible, génération de personnages ignorée")
-            return
-        
-        # Générer pour chaque classe de personnage
-        for class_type in tqdm(config.get("class_types", []), desc="Classes de personnage"):
-            # Seed dérivé pour cette classe
-            class_seed = master_seed + hash(class_type) % 10000
+        # Générer les personnages
+        if "characters" in self.config:
+            class_types = self.config["characters"].get("class_types", ["warrior", "mage"])
+            variations = self.config["characters"].get("variations_per_class", 1)
             
-            # Paramètres de base pour cette classe
-            params = {
-                "class_type": class_type,
-                "variations": config.get("variations_per_class", 1)
-            }
-            
-            # Générer des sprites de base
-            asset_id = f"character_{class_type}"
-            asset = self.generate_asset(AssetType.SPRITE_2D, asset_id, params, class_seed)
-            
-            if asset:
-                # Sauvegarder le sprite
-                filepath = os.path.join(
-                    self.base_output_dir, 
-                    AssetCategory.CHARACTER.value, 
-                    f"{class_type}_character.png"
-                )
-                self.save_asset(AssetType.SPRITE_2D, asset, filepath)
-    
-    def _generate_terrain(self, config, master_seed):
-        """Génère les assets de terrain"""
-        print("Génération du terrain...")
+            print(f"Génération de {len(class_types) * variations} personnages...")
+            for class_type in tqdm(class_types):
+                for i in range(variations):
+                    params = {
+                        "sprite_type": SpriteType.CHARACTER,
+                        "class_type": class_type
+                    }
+                    
+                    try:
+                        asset_id = f"{class_type}_{i}"
+                        asset, path = self.generate_asset(AssetType.SPRITE_2D, AssetCategory.CHARACTER, asset_id, params)
+                        if asset:
+                            total_assets += 1
+                    except Exception as e:
+                        print(f"Erreur lors de la génération du personnage {class_type}_{i}: {e}")
+                        errors += 1
         
-        generator = self.get_generator(AssetType.TERRAIN)
-        if not generator:
-            print("Générateur de terrain non disponible, génération de terrain ignorée")
-            return
-        
-        # Générer pour chaque type de terrain
-        for terrain_type in tqdm(config.get("terrain_types", []), desc="Types de terrain"):
-            # Seed dérivé pour ce type de terrain
-            terrain_seed = master_seed + hash(terrain_type) % 10000
+        # Générer le terrain
+        if "terrain" in self.config:
+            terrain_types = self.config["terrain"].get("terrain_types", ["grass", "desert"])
+            variations = self.config["terrain"].get("variations_per_type", 3)
             
-            # Générer plusieurs variations
-            for i in range(config.get("variations_per_type", 3)):
-                # Paramètres pour cette variation
+            print(f"Génération de {len(terrain_types) * variations} terrains...")
+            for terrain_type in tqdm(terrain_types):
+                for i in range(variations):
+                    params = {
+                        "terrain_type": terrain_type
+                    }
+                    
+                    try:
+                        asset_id = f"{terrain_type}_{i}"
+                        asset, path = self.generate_asset(AssetType.TERRAIN, AssetCategory.ENVIRONMENT, asset_id, params)
+                        if asset:
+                            total_assets += 1
+                    except Exception as e:
+                        print(f"Erreur lors de la génération du terrain {terrain_type}_{i}: {e}")
+                        errors += 1
+        
+        # Générer les bâtiments
+        if "buildings" in self.config:
+            building_types = self.config["buildings"].get("building_types", ["house", "tower"])
+            variations = self.config["buildings"].get("variations_per_type", 1)
+            
+            print(f"Génération de {len(building_types) * variations} bâtiments...")
+            for building_type in tqdm(building_types):
+                for i in range(variations):
+                    params = {
+                        "model_type": ModelType.BUILDING,
+                        "model_subtype": building_type
+                    }
+                    
+                    try:
+                        asset_id = f"{building_type}_{i}"
+                        asset, path = self.generate_asset(AssetType.MODEL_3D, AssetCategory.BUILDING, asset_id, params)
+                        if asset:
+                            total_assets += 1
+                    except Exception as e:
+                        print(f"Erreur lors de la génération du bâtiment {building_type}_{i}: {e}")
+                        errors += 1
+        
+        # Générer les props
+        if "props" in self.config:
+            prop_types = self.config["props"].get("prop_types", ["tree", "rock"])
+            variations = self.config["props"].get("variations_per_type", 2)
+            
+            print(f"Génération de {len(prop_types) * variations} props...")
+            for prop_type in tqdm(prop_types):
+                for i in range(variations):
+                    params = {
+                        "model_type": ModelType.PROP,
+                        "model_subtype": prop_type
+                    }
+                    
+                    try:
+                        asset_id = f"{prop_type}_{i}"
+                        asset, path = self.generate_asset(AssetType.MODEL_3D, AssetCategory.PROP, asset_id, params)
+                        if asset:
+                            total_assets += 1
+                    except Exception as e:
+                        print(f"Erreur lors de la génération du prop {prop_type}_{i}: {e}")
+                        errors += 1
+        
+        # Générer les éléments d'UI
+        if "ui" in self.config:
+            ui_types = self.config["ui"].get("panel_types", ["inventory", "character"])
+            
+            print(f"Génération de {len(ui_types)} éléments d'interface...")
+            for ui_type in tqdm(ui_types):
                 params = {
-                    "terrain_type": terrain_type,
-                    "variation": i
+                    "sprite_type": SpriteType.UI_ELEMENT,
+                    "ui_type": ui_type
                 }
                 
-                # Générer le tile de terrain
-                asset_id = f"terrain_{terrain_type}_{i+1}"
-                asset = self.generate_asset(AssetType.TERRAIN, asset_id, params, terrain_seed + i)
-                
-                if asset:
-                    # Sauvegarder le tile
-                    filepath = os.path.join(
-                        self.base_output_dir, 
-                        AssetCategory.ENVIRONMENT.value,
-                        terrain_type,
-                        f"{terrain_type}_tile_{i+1}.png"
-                    )
-                    self.save_asset(AssetType.TERRAIN, asset, filepath)
-    
-    def _generate_props(self, config, master_seed):
-        """Génère les assets de props"""
-        print("Génération des props...")
+                try:
+                    asset_id = f"{ui_type}"
+                    asset, path = self.generate_asset(AssetType.SPRITE_2D, AssetCategory.UI, asset_id, params)
+                    if asset:
+                        total_assets += 1
+                except Exception as e:
+                    print(f"Erreur lors de la génération de l'UI {ui_type}: {e}")
+                    errors += 1
         
-        generator = self.get_generator(AssetType.MODEL_3D)
-        if not generator:
-            print("Générateur de modèles 3D non disponible, génération de props ignorée")
-            return
-        
-        # Générer pour chaque type de prop
-        for prop_type in tqdm(config.get("prop_types", []), desc="Types de props"):
-            # Seed dérivé pour ce type de prop
-            prop_seed = master_seed + hash(prop_type) % 10000
+        # Générer les effets
+        if "effects" in self.config:
+            effect_types = self.config["effects"].get("effect_types", ["fire", "water"])
+            variations = self.config["effects"].get("variations_per_type", 2)
             
-            # Générer plusieurs variations
-            for i in range(config.get("variations_per_type", 2)):
-                # Paramètres pour cette variation
-                params = {
-                    "model_type": "prop",
-                    "prop_subtype": prop_type,
-                    "variation": i
-                }
-                
-                # Générer le modèle de prop
-                asset_id = f"prop_{prop_type}_{i+1}"
-                asset = self.generate_asset(AssetType.MODEL_3D, asset_id, params, prop_seed + i)
-                
-                if asset:
-                    # Sauvegarder le modèle
-                    filepath = os.path.join(
-                        self.base_output_dir,
-                        AssetCategory.PROP.value,
-                        prop_type,
-                        f"{prop_type}_{i+1}.bam"
-                    )
-                    self.save_asset(AssetType.MODEL_3D, asset, filepath)
-    
-    def _generate_buildings(self, config, master_seed):
-        """Génère les assets de bâtiments"""
-        print("Génération des bâtiments...")
+            print(f"Génération de {len(effect_types) * variations} effets...")
+            for effect_type in tqdm(effect_types):
+                for i in range(variations):
+                    params = {
+                        "effect_type": effect_type,
+                        "intensity": random.uniform(0.8, 1.3),
+                        "scale": random.uniform(0.9, 1.2)
+                    }
+                    
+                    try:
+                        asset_id = f"{effect_type}_{i}"
+                        asset, path = self.generate_asset(AssetType.EFFECT, AssetCategory.EFFECT, asset_id, params)
+                        if asset:
+                            total_assets += 1
+                    except Exception as e:
+                        print(f"Erreur lors de la génération de l'effet {effect_type}_{i}: {e}")
+                        errors += 1
         
-        generator = self.get_generator(AssetType.MODEL_3D)
-        if not generator:
-            print("Générateur de modèles 3D non disponible, génération de bâtiments ignorée")
-            return
-        
-        # Générer pour chaque type de bâtiment
-        for building_type in tqdm(config.get("building_types", []), desc="Types de bâtiments"):
-            # Seed dérivé pour ce type de bâtiment
-            building_seed = master_seed + hash(building_type) % 10000
+        # Générer les animations
+        if "animations" in self.config:
+            animation_types = self.config["animations"].get("animation_types", ["walk", "attack"])
+            character_types = self.config["animations"].get("character_types", ["warrior", "mage"])
             
-            # Générer plusieurs variations
-            for i in range(config.get("variations_per_type", 1)):
-                # Paramètres pour cette variation
-                params = {
-                    "model_type": "building",
-                    "building_subtype": building_type,
-                    "variation": i
-                }
-                
-                # Générer le modèle de bâtiment
-                asset_id = f"building_{building_type}_{i+1}"
-                asset = self.generate_asset(AssetType.MODEL_3D, asset_id, params, building_seed + i)
-                
-                if asset:
-                    # Sauvegarder le modèle
-                    filepath = os.path.join(
-                        self.base_output_dir,
-                        AssetCategory.BUILDING.value,
-                        building_type,
-                        f"{building_type}_{i+1}.bam"
-                    )
-                    self.save_asset(AssetType.MODEL_3D, asset, filepath)
-    
-    def _generate_ui(self, config, master_seed):
-        """Génère les assets d'interface utilisateur"""
-        print("Génération des éléments d'UI...")
-        # À implémenter
-    
-    def _generate_effects(self, config, master_seed):
-        """Génère les assets d'effets visuels"""
-        print("Génération des effets...")
-        # À implémenter
+            print(f"Génération de {len(animation_types) * len(character_types)} animations...")
+            for animation_type in tqdm(animation_types):
+                for character_type in character_types:
+                    params = {
+                        "animation_type": animation_type,
+                        "character_type": character_type
+                    }
+                    
+                    try:
+                        asset_id = f"{character_type}_{animation_type}"
+                        asset, path = self.generate_asset(AssetType.ANIMATION, AssetCategory.CHARACTER, asset_id, params)
+                        if asset:
+                            total_assets += 1
+                    except Exception as e:
+                        print(f"Erreur lors de la génération de l'animation {character_type}_{animation_type}: {e}")
+                        errors += 1
+        
+        # Générer les matériaux PBR
+        if "materials" in self.config:
+            material_types = self.config["materials"].get("material_types", ["stone", "wood"])
+            variations = self.config["materials"].get("variations_per_type", 2)
+            
+            print(f"Génération de {len(material_types) * variations} matériaux PBR...")
+            for material_type in tqdm(material_types):
+                for i in range(variations):
+                    # Utiliser la méthode spécifique pour les matériaux PBR
+                    try:
+                        asset_id = f"{material_type}_{i}"
+                        asset, path = self.generate_pbr_material(
+                            material_type, 
+                            asset_id,
+                            size=(512, 512),
+                            context=random.choice([None, "snow", "desert", "wet"]),
+                            age_factor=random.uniform(0.0, 0.8)
+                        )
+                        if asset:
+                            total_assets += 1
+                    except Exception as e:
+                        print(f"Erreur lors de la génération du matériau {material_type}_{i}: {e}")
+                        errors += 1
+        
+        # Calculer le temps total
+        total_time = time.time() - start_time
+        
+        # Préparer les statistiques
+        stats = {
+            "total_assets": total_assets,
+            "errors": errors,
+            "time_taken": total_time,
+            "categories": self.generation_stats["assets_by_category"]
+        }
+        
+        return stats
 
 # Fonction utilitaire pour la génération d'assets
 def generate_all_assets(base_dir, config, seed=None):

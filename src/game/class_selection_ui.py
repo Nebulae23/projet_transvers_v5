@@ -18,10 +18,17 @@ from .character_class import ClassType
 class ClassSelectionUI:
     """UI for selecting a character class"""
     
-    def __init__(self, game):
-        """Initialize the class selection UI"""
+    def __init__(self, game, on_class_selected_callback=None):
+        """
+        Initialize the class selection UI
+        
+        Args:
+            game: The game instance
+            on_class_selected_callback: Callback function to call when class is selected
+        """
         self.game = game
         self.selected_class = None
+        self.on_class_selected_callback = on_class_selected_callback
         
         # Create UI elements
         self.create_ui()
@@ -208,8 +215,11 @@ class ClassSelectionUI:
     def confirm_selection(self):
         """Confirm the class selection"""
         if self.selected_class:
-            # Call the game's class selection handler
-            self.game.on_class_selected(self.selected_class)
+            # Call the callback if provided, otherwise fall back to game's method
+            if self.on_class_selected_callback:
+                self.on_class_selected_callback(self.selected_class)
+            elif hasattr(self.game, 'on_class_selected'):
+                self.game.on_class_selected(self.selected_class)
             
             # Hide the selection UI
             self.hide()

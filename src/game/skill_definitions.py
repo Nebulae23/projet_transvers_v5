@@ -522,204 +522,117 @@ SKILL_CONNECTIONS = [
 ]
 
 class SkillDefinitions:
-    """Definitions for skills and abilities"""
+    """Class for creating and managing skill definitions"""
     
     def __init__(self):
-        """Initialize skill definitions"""
+        """Initialize with default templates"""
         pass
-        
+    
     def create_skill_tree_template(self):
-        """
-        Create a skill tree template with all default skills
-        
-        Returns:
-            dict: Skill tree template
-        """
+        """Create a template for initializing the skill tree"""
+        # Create the template structure
         template = {
-            'groups': {
-                'offensive': {
-                    'name': 'Offensive Skills',
-                    'description': 'Skills focused on dealing damage'
-                },
-                'defensive': {
-                    'name': 'Defensive Skills',
-                    'description': 'Skills focused on protection and survival'
-                },
-                'utility': {
-                    'name': 'Utility Skills',
-                    'description': 'Skills providing various utility effects'
-                },
-                'class': {
-                    'name': 'Class-Specific Skills',
-                    'description': 'Skills unique to your character class'
-                },
-                'fusion': {
-                    'name': 'Ability Fusion',
-                    'description': 'Skills related to fusing abilities'
-                },
-                'harmonization': {
-                    'name': 'Ability Harmonization',
-                    'description': 'Skills related to harmonizing abilities'
-                }
+            "warrior": {
+                "root": "warrior_root",
+                "skills": [
+                    "warrior_root",
+                    "strength_1",
+                    "toughness_1",
+                    "whirlwind",
+                    "axe_mastery"
+                ],
+                "connections": [
+                    ("warrior_root", "strength_1"),
+                    ("warrior_root", "toughness_1"),
+                    ("warrior_root", "axe_mastery"),
+                    ("strength_1", "whirlwind")
+                ]
             },
-            'skills': {}
+            "mage": {
+                "root": "mage_root",
+                "skills": [
+                    "mage_root",
+                    "fireball",
+                    "arcane_intellect",
+                    "mana_shield",
+                    "fireball_specialization"
+                ],
+                "connections": [
+                    ("mage_root", "fireball"),
+                    ("mage_root", "arcane_intellect"),
+                    ("mage_root", "mana_shield"),
+                    ("fireball", "fireball_specialization")
+                ]
+            },
+            "cleric": {
+                "root": "cleric_root",
+                "skills": [
+                    "cleric_root",
+                    "healing_light",
+                    "divine_favor",
+                    "holy_strike",
+                    "consecration"
+                ],
+                "connections": [
+                    ("cleric_root", "healing_light"),
+                    ("cleric_root", "divine_favor"),
+                    ("cleric_root", "holy_strike"),
+                    ("healing_light", "consecration")
+                ]
+            },
+            "ranger": {
+                "root": "ranger_root",
+                "skills": [
+                    "ranger_root",
+                    "precision_1",
+                    "trap_efficiency",
+                    "multi_shot"
+                ],
+                "connections": [
+                    ("ranger_root", "precision_1"),
+                    ("ranger_root", "trap_efficiency"),
+                    ("precision_1", "multi_shot")
+                ]
+            }
         }
-        
-        # Add basic offensive skills
-        template['skills'].update(self._create_offensive_skills())
-        
-        # Add basic defensive skills
-        template['skills'].update(self._create_defensive_skills())
-        
-        # Add basic utility skills
-        template['skills'].update(self._create_utility_skills())
-        
-        # Add class-specific skills
-        template['skills'].update(self._create_class_skills())
-        
-        # Add fusion skills
-        template['skills'].update(self._create_fusion_skills())
-        
-        # Add harmonization skills
-        template['skills'].update(self._create_harmonization_skills())
         
         return template
     
     def _create_offensive_skills(self):
-        """Create offensive skill definitions"""
-        return {}
+        """Create offensive skill branch"""
+        # To be implemented
+        pass
     
     def _create_defensive_skills(self):
-        """Create defensive skill definitions"""
-        return {}
+        """Create defensive skill branch"""
+        # To be implemented
+        pass
     
     def _create_utility_skills(self):
-        """Create utility skill definitions"""
-        return {}
+        """Create utility skill branch"""
+        # To be implemented
+        pass
     
     def _create_class_skills(self):
-        """Create class-specific skill definitions"""
-        return {}
+        """Create class-specific skills"""
+        # To be implemented
+        pass
     
     def _create_fusion_skills(self):
-        """Create fusion skill definitions"""
-        return {}
-        
+        """Create multi-class fusion skills"""
+        # To be implemented
+        pass
+    
     def _create_harmonization_skills(self):
-        """
-        Create harmonization skill definitions
-        
-        Returns:
-            dict: Harmonization skill definitions
-        """
-        return {
-            'basic_harmonization': {
-                'name': 'Ability Harmonization',
-                'description': 'Unlock the ability to harmonize your abilities, enhancing their effects.',
-                'icon': 'harmonization_icon',
-                'cost': 3,
-                'prerequisites': [],  # No prerequisites
-                'effects': {
-                    'unlock_ability': 'can_harmonize_abilities'
-                },
-                'group': 'harmonization',
-                'position': (0, 0),
-                'tier': 3,  # Higher tier ability
-            },
-            'fire_harmonization': {
-                'name': 'Fire Harmonization',
-                'description': 'Unlock advanced harmonization for fire abilities.',
-                'icon': 'fire_harmonization_icon',
-                'cost': 2,
-                'prerequisites': ['basic_harmonization'],
-                'effects': {
-                    'unlock_ability': 'fire_harmonization'
-                },
-                'group': 'harmonization',
-                'position': (-1, 1),
-                'tier': 4,
-            },
-            'ice_harmonization': {
-                'name': 'Ice Harmonization',
-                'description': 'Unlock advanced harmonization for ice abilities.',
-                'icon': 'ice_harmonization_icon',
-                'cost': 2,
-                'prerequisites': ['basic_harmonization'],
-                'effects': {
-                    'unlock_ability': 'ice_harmonization'
-                },
-                'group': 'harmonization',
-                'position': (0, 1),
-                'tier': 4,
-            },
-            'lightning_harmonization': {
-                'name': 'Lightning Harmonization',
-                'description': 'Unlock advanced harmonization for lightning abilities.',
-                'icon': 'lightning_harmonization_icon',
-                'cost': 2,
-                'prerequisites': ['basic_harmonization'],
-                'effects': {
-                    'unlock_ability': 'lightning_harmonization'
-                },
-                'group': 'harmonization',
-                'position': (1, 1),
-                'tier': 4,
-            },
-            'projectile_harmonization': {
-                'name': 'Projectile Harmonization',
-                'description': 'Unlock advanced harmonization for projectile abilities.',
-                'icon': 'projectile_harmonization_icon',
-                'cost': 2,
-                'prerequisites': ['basic_harmonization'],
-                'effects': {
-                    'unlock_ability': 'projectile_harmonization'
-                },
-                'group': 'harmonization',
-                'position': (-1, 2),
-                'tier': 4,
-            },
-            'area_harmonization': {
-                'name': 'Area Harmonization',
-                'description': 'Unlock advanced harmonization for area abilities.',
-                'icon': 'area_harmonization_icon',
-                'cost': 2,
-                'prerequisites': ['basic_harmonization'],
-                'effects': {
-                    'unlock_ability': 'area_harmonization'
-                },
-                'group': 'harmonization',
-                'position': (0, 2),
-                'tier': 4,
-            },
-            'melee_harmonization': {
-                'name': 'Melee Harmonization',
-                'description': 'Unlock advanced harmonization for melee abilities.',
-                'icon': 'melee_harmonization_icon',
-                'cost': 2,
-                'prerequisites': ['basic_harmonization'],
-                'effects': {
-                    'unlock_ability': 'melee_harmonization'
-                },
-                'group': 'harmonization',
-                'position': (1, 2),
-                'tier': 4,
-            },
-            'master_harmonization': {
-                'name': 'Master Harmonization',
-                'description': 'Master the art of harmonization, enabling more powerful enhancements.',
-                'icon': 'master_harmonization_icon',
-                'cost': 5,
-                'prerequisites': ['fire_harmonization', 'ice_harmonization', 'lightning_harmonization', 
-                                 'projectile_harmonization', 'area_harmonization', 'melee_harmonization'],
-                'effects': {
-                    'unlock_ability': 'master_harmonization',
-                    'harmonization_power': 1.5  # 50% more powerful harmonization effects
-                },
-                'group': 'harmonization',
-                'position': (0, 3),
-                'tier': 5,
-            }
-        }
+        """Create late-game harmonization skills"""
+        # To be implemented
+        pass
+
+# Create a function at the module level to create a skill tree template
+def create_skill_tree_template():
+    """Create a template for initializing the skill tree"""
+    skill_defs = SkillDefinitions()
+    return skill_defs.create_skill_tree_template()
 
 # Warrior abilities
 WARRIOR_ABILITIES = {

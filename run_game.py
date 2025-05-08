@@ -21,7 +21,8 @@ from direct.gui.OnscreenText import OnscreenText
 from direct.gui.DirectGui import DirectFrame, DirectLabel, DirectButton, DGG
 from panda3d.core import (
     WindowProperties, TextNode, LVector3f, 
-    AntialiasAttrib, TransparencyAttrib, Vec3, Shader, ShaderAttrib, Texture
+    AntialiasAttrib, TransparencyAttrib, Vec3, Shader, ShaderAttrib, Texture,
+    AmbientLight, DirectionalLight, CardMaker
 )
 
 # Import game modules
@@ -30,6 +31,8 @@ from game.day_night_cycle import DayNightCycle
 from game.entity_manager import EntityManager
 from game.adaptive_difficulty import AdaptiveDifficultySystem
 from game.audio_manager import AudioManager
+from game.main_menu import MainMenuScene
+from game.pause_menu import PauseMenu
 
 # Import physics systems
 from src.engine.physics import PhysicsManager
@@ -43,6 +46,10 @@ import game.skill_definitions as skill_definitions
 from game.random_events import RandomEventSystem
 from game.night_fog import NightFog
 
+# Import UI components
+from engine.ui.info_box import InfoBoxUI
+from engine.ui.notification import NotificationSystem
+
 class NightfallDefendersGame(ShowBase):
     """Main game class for Nightfall Defenders"""
     
@@ -54,6 +61,7 @@ class NightfallDefendersGame(ShowBase):
         self.debug_mode = False
         self.paused = False
         self.show_fps = True
+        self.game_started = False
         
         # Setup window properties
         self.setup_window()
@@ -61,22 +69,22 @@ class NightfallDefendersGame(ShowBase):
         # Set up the camera
         self.setup_camera()
         
-        # Create UI elements
-        self.create_ui()
-        
         # Initialize game systems
         self.setup_game_systems()
         
         # Key bindings
         self.setup_keys()
         
-        # Create initial game world
-        self.create_world()
+        # Create UI elements (only when game starts)
+        self.ui_initialized = False
+        
+        # Main menu - create it first and show it
+        self.main_menu = MainMenuScene(self)
         
         # Start the game loop
         self.taskMgr.add(self.update, "GameUpdateTask")
         
-        print("Nightfall Defenders game initialized!")
+        print("Nightfall Defenders initialized in menu mode!")
     
     def setup_window(self):
         """Set up the game window"""
@@ -99,89 +107,69 @@ class NightfallDefendersGame(ShowBase):
     
     def create_ui(self):
         """Create UI elements"""
-        # Health and status display
-        self.health_text = OnscreenText(
-            text="Health: 100/100", 
-            pos=(-1.3, 0.9), 
-            scale=0.05,
-            align=TextNode.ALeft,
-            fg=(1, 1, 1, 1),
-            shadow=(0, 0, 0, 0.5)
+        if self.ui_initialized:
+            return
+            
+        # Player stats box
+        self.player_stats_box = InfoBoxUI(
+            self, 
+            "Player Status", 
+            (-1.3, 0.9), 
+            (0.5, 0.3),
+            expanded=True
+        )
+        self.player_stats_box.add_text_row("Health", "100/100")
+        self.player_stats_box.add_text_row("Level", "1")
+        self.player_stats_box.add_text_row("XP", "0/100")
+        self.player_stats_box.add_text_row("Skill Points", "0")
+        
+        # Current ability box
+        self.ability_box = InfoBoxUI(
+            self, 
+            "Current Ability", 
+            (-1.3, 0.5), 
+            (0.5, 0.2),
+            expanded=True
+        )
+        self.ability_box.add_text_row("Primary", "None")
+        self.ability_box.add_text_row("Secondary", "None")
+        
+        # Inventory box (initially collapsed)
+        self.inventory_box = InfoBoxUI(
+            self, 
+            "Inventory", 
+            (-1.3, 0.15), 
+            (0.5, 0.4),
+            expanded=False
         )
         
-        # Experience display
-        self.exp_text = OnscreenText(
-            text="Level: 1 | XP: 0/100", 
-            pos=(-1.3, 0.8), 
-            scale=0.05,
-            align=TextNode.ALeft,
-            fg=(0.8, 0.8, 1, 1),
-            shadow=(0, 0, 0, 0.5)
+        # Game info box (time, etc.)
+        self.game_info_box = InfoBoxUI(
+            self, 
+            "Game Info", 
+            (1.3, 0.9), 
+            (0.5, 0.3),
+            expanded=True
         )
+        self.game_info_box.add_text_row("Time", "Day 1, 00:00")
+        self.game_info_box.add_text_row("Time of Day", "Day")
+        self.game_info_box.add_text_row("FPS", "0")
         
-        # Current weapon/ability display
-        self.weapon_text = OnscreenText(
-            text="Current Ability: None", 
-            pos=(-1.3, 0.7), 
-            scale=0.05,
-            align=TextNode.ALeft,
-            fg=(1, 0.8, 0.8, 1),
-            shadow=(0, 0, 0, 0.5)
-        )
-        
-        # Time display
-        self.time_text = OnscreenText(
-            text="Time: Day 1, 00:00", 
-            pos=(1.3, 0.9), 
-            scale=0.05,
-            align=TextNode.ARight,
-            fg=(1, 1, 0.8, 1),
-            shadow=(0, 0, 0, 0.5)
-        )
-        
-        # FPS counter
-        self.fps_text = OnscreenText(
-            text="FPS: 0", 
-            pos=(1.3, 0.8), 
-            scale=0.05,
-            align=TextNode.ARight,
-            fg=(0.8, 1, 0.8, 1),
-            shadow=(0, 0, 0, 0.5)
-        )
-        
-        # Inventory display
-        self.inventory_text = OnscreenText(
-            text="Inventory: Empty", 
-            pos=(-1.3, -0.9), 
-            scale=0.05,
-            align=TextNode.ALeft,
-            fg=(0.8, 0.8, 0.8, 1),
-            shadow=(0, 0, 0, 0.5)
-        )
-        
-        # Skill points display
-        self.skill_points_text = OnscreenText(
-            text="Skill Points: 0", 
-            pos=(-1.3, 0.6), 
-            scale=0.05,
-            align=TextNode.ALeft,
-            fg=(0.4, 1, 0.4, 1),
-            shadow=(0, 0, 0, 0.5)
-        )
-        
-        # Create skill tree button
+        # Skill tree button
         self.skill_tree_button = DirectButton(
             text="Skill Tree",
             scale=0.05,
-            pos=(1.15, 0, 0.7),
+            pos=(1.15, 0, 0.5),
             command=self.toggle_skill_tree,
             frameColor=(0.2, 0.2, 0.3, 0.8),
             text_fg=(1, 1, 1, 1),
             relief=DGG.FLAT
         )
         
-        # Experience bar
+        # Create experience bar
         self.create_exp_bar()
+        
+        self.ui_initialized = True
     
     def create_exp_bar(self):
         """Create the experience bar"""
@@ -200,16 +188,31 @@ class NightfallDefendersGame(ShowBase):
             pos=(0, 0, -0.85),
             parent=self.aspect2d
         )
+        
+        # Hide initially until game starts
+        self.exp_bar_bg.hide()
+        self.exp_bar_fg.hide()
     
     def update_exp_bar(self):
         """Update the experience bar display"""
-        if hasattr(self, 'player'):
+        if not self.game_started:
+            return
+            
+        if hasattr(self, 'player') and self.player is not None:
             # Get experience percentage
             exp_percent = self.player.get_experience_percent()
             
             # Update bar width
             width = 1.0 * exp_percent
             self.exp_bar_fg["frameSize"] = (-0.5, -0.5 + width, -0.02, 0.02)
+            
+            # Show exp bar if hidden
+            if not self.exp_bar_bg.isShown():
+                self.exp_bar_bg.show()
+                self.exp_bar_fg.show()
+        else:
+            # No player, set to zero
+            self.exp_bar_fg["frameSize"] = (-0.5, -0.5, -0.02, 0.02)
     
     def setup_game_systems(self):
         """Initialize game systems"""
@@ -237,10 +240,14 @@ class NightfallDefendersGame(ShowBase):
         
         # Night fog system
         self.night_fog = NightFog(self)
+        
+        # UI systems
+        self.notification_system = NotificationSystem(self)
+        self.pause_menu = PauseMenu(self)
     
     def setup_keys(self):
         """Set up key bindings"""
-        # Movement keys
+        # Movement keys - these will only work after game starts
         self.accept("w", self.set_player_moving, [True, 0])  # Forward
         self.accept("w-up", self.set_player_moving, [False, 0])
         self.accept("s", self.set_player_moving, [True, 1])  # Backward
@@ -250,7 +257,7 @@ class NightfallDefendersGame(ShowBase):
         self.accept("d", self.set_player_moving, [True, 3])  # Right
         self.accept("d-up", self.set_player_moving, [False, 3])
         
-        # Action keys
+        # Action keys - these will only work after game starts
         self.accept("mouse1", self.player_primary_attack)
         self.accept("mouse3", self.player_secondary_attack)
         self.accept("space", self.player_dodge)
@@ -267,155 +274,99 @@ class NightfallDefendersGame(ShowBase):
         self.accept("f", self.toggle_night_fog)  # Toggle night fog
     
     def create_world(self):
-        """Create the initial game world"""
-        # Create the player
-        self.player = Player(self)
-        self.player.position = LVector3f(0, 0, 0)
-        
-        # Create the UI for the new systems
-        self.class_selection_ui = ClassSelectionUI(self, self.on_class_selected)
-        self.skill_tree_ui = SkillTreeUI(self, self.player, self.player.skill_tree)
-        
-        # Show class selection at start
-        self.taskMgr.doMethodLater(0.5, lambda task: self.class_selection_ui.show(), "ShowClassSelection")
-        
-        # Create ground plane (temporary)
-        try:
-            # Try to load plane model first
-            ground = self.loader.loadModel("models/plane")
-        except:
-            # Fallback to box model if plane isn't available
-            print("Plane model not found, using box model for ground instead")
-            ground = self.loader.loadModel("models/box")
-            ground.setScale(100, 100, 0.1)  # Make it flat like a plane
-        
-        ground.setColor(0.3, 0.6, 0.3, 1)  # Green color
-        ground.reparentTo(self.render)
-        
-        # Example physics entity (player)
-        if hasattr(self, 'player') and hasattr(self, 'physics_manager'):
-            self.physics_manager.register_physics_entity(
-                "player", 
-                self.player.get_position(), 
-                0.5,  # Radius
-                1.0   # Mass
-            )
+        """Create initial game world"""
+        if not self.game_started:
+            # Don't create world until game starts
+            return
             
-            # Create character rig for player
-            player_rig = self.physics_manager.create_character_rig("player", 2.0)
+        # Create UI elements if not already created
+        if not self.ui_initialized:
+            self.create_ui()
+        
+        print("Creating game world...")
+        
+        # Set up terrain
+        self.create_terrain()
+        
+        # Set up lighting
+        self.setup_lighting()
+        
+        # Create player character
+        self.create_player()
+        
+        # Initialize player character
+        self.player.initialize()
+        
+        # Play ambience
+        self.audio_manager.play_sound("ambient_birds_morning", loop=True, category="ambient")
+        
+        # Show the experience bar
+        if hasattr(self, 'exp_bar_bg'):
+            self.exp_bar_bg.show()
+            self.exp_bar_fg.show()
             
-            # Example cloth (flag or cape)
-            if self.render:
-                flag_position = Vec3(5, 0, 3)  # Some position in the world
-                self.physics_manager.create_cloth(
-                    flag_position, 
-                    2.0,   # Width
-                    1.5,   # Height
-                    self.render,
-                    None,  # No texture for now
-                    "flag"
-                )
+        # Display start notification
+        if hasattr(self, 'notification_system'):
+            self.notification_system.show_notification("Welcome to Nightfall Defenders", "success")
     
     def update(self, task):
-        """Main game update loop"""
-        # Get time elapsed since last frame
+        """
+        Main game update loop
+        
+        Args:
+            task: Task object from Panda3D task manager
+            
+        Returns:
+            Task.cont to continue the task
+        """
+        # Calculate delta time since last frame
         dt = globalClock.getDt()
         
-        # Skip updates if paused
-        if self.paused:
+        # Update time of day
+        if self.game_started and hasattr(self, 'day_night_cycle'):
+            self.day_night_cycle.update(dt)
+        
+        # Update audio
+        if hasattr(self, 'audio_manager'):
+            self.audio_manager.update(dt)
+        
+        # If game is paused, don't update gameplay systems
+        if self.paused or not self.game_started:
+            # Still update UI
+            if self.game_started:
+                self.update_ui()
             return task.cont
         
-        try:
-            # Update game systems
-            if hasattr(self, 'day_night_cycle'):
-                self.day_night_cycle.update(dt)
-                
-                # Manually update shader time of day if needed
-                if hasattr(self, 'filter_manager') and hasattr(self, '_last_time_of_day') and \
-                   not hasattr(self.day_night_cycle, 'add_time_changed_callback'):
-                    # Get current time of day - check which method is available
-                    current_time = 0.5  # Default to midday
-                    if hasattr(self.day_night_cycle, 'get_time_of_day'):
-                        time_value = self.day_night_cycle.get_time_of_day()
-                        # Ensure it's a numeric value
-                        current_time = float(time_value) if isinstance(time_value, (int, float)) else 0.5
-                    elif hasattr(self.day_night_cycle, 'getTimeOfDay'):
-                        time_value = self.day_night_cycle.getTimeOfDay()
-                        # Ensure it's a numeric value
-                        current_time = float(time_value) if isinstance(time_value, (int, float)) else 0.5
-                    elif hasattr(self.day_night_cycle, 'time_of_day'):
-                        time_value = self.day_night_cycle.time_of_day
-                        # Ensure it's a numeric value
-                        current_time = float(time_value) if isinstance(time_value, (int, float)) else 0.5
-                    
-                    # Only update if changed significantly
-                    if abs(current_time - self._last_time_of_day) > 0.01:
-                        self.update_shader_time_of_day(current_time)
-                        self._last_time_of_day = current_time
-            
-            if hasattr(self, 'entity_manager'):
-                self.entity_manager.update(dt)
-                
-            if hasattr(self, 'adaptive_difficulty'):
-                self.adaptive_difficulty.update(dt)
-                
-            if hasattr(self, 'audio_manager'):
-                self.audio_manager.update(dt)
-                
-            if hasattr(self, 'random_event_system'):
-                self.random_event_system.update(dt)
-                
-            if hasattr(self, 'physics_manager'):
-                self.physics_manager.update(dt)
-                
-            if hasattr(self, 'night_fog') and self.night_fog.enabled:
-                # Check if it's night time
-                if hasattr(self, 'day_night_cycle'):
-                    # Get current time of day - check which method is available
-                    time_of_day = 0.5  # Default to midday
-                    if hasattr(self.day_night_cycle, 'get_time_of_day'):
-                        time_value = self.day_night_cycle.get_time_of_day()
-                        # Ensure it's a numeric value
-                        time_of_day = float(time_value) if isinstance(time_value, (int, float)) else 0.5
-                    elif hasattr(self.day_night_cycle, 'getTimeOfDay'):
-                        time_value = self.day_night_cycle.getTimeOfDay()
-                        # Ensure it's a numeric value
-                        time_of_day = float(time_value) if isinstance(time_value, (int, float)) else 0.5
-                    elif hasattr(self.day_night_cycle, 'time_of_day'):
-                        time_value = self.day_night_cycle.time_of_day
-                        # Ensure it's a numeric value
-                        time_of_day = float(time_value) if isinstance(time_value, (int, float)) else 0.5
-                    
-                    # Night is roughly from 0.7 to 0.3 (wrapping around midnight)
-                    is_night = time_of_day > 0.7 or time_of_day < 0.3
-                    
-                    # Update fog intensity based on time of day
-                    if is_night:
-                        # Calculate how deep into the night we are (0-1)
-                        if time_of_day > 0.7:
-                            night_progress = (time_of_day - 0.7) / 0.3
-                        else:
-                            night_progress = 1.0 - (time_of_day / 0.3)
-                            
-                        self.night_fog.set_intensity(night_progress * 0.7 + 0.3)
-                    else:
-                        self.night_fog.set_intensity(0.0)
-                
-                self.night_fog.update(dt)
-            
-            # Player updates
-            if hasattr(self, 'player') and self.player is not None:
-                self.player.update(dt)
-            
-            # Camera updates
-            self.update_camera()
-            
-            # UI updates
-            self.update_ui()
+        # Update physics
+        if hasattr(self, 'physics_manager'):
+            self.physics_manager.update(dt)
         
-        except Exception as e:
-            print(f"Error in update loop: {e}")
+        # Update entities
+        if hasattr(self, 'entity_manager'):
+            self.entity_manager.update(dt)
         
+        # Update player
+        if hasattr(self, 'player'):
+            self.player.update(dt)
+        
+        # Update camera
+        self.update_camera()
+        
+        # Update UI
+        self.update_ui()
+        
+        # Update random events
+        if hasattr(self, 'random_event_system'):
+            self.random_event_system.update(dt)
+        
+        # Update night fog if enabled
+        if hasattr(self, 'night_fog') and self.night_fog.enabled:
+            self.night_fog.update(dt)
+        
+        # Update adaptive difficulty
+        if hasattr(self, 'adaptive_difficulty') and self.adaptive_difficulty.enabled:
+            self.adaptive_difficulty.update(dt)
+            
         return task.cont
     
     def update_camera(self):
@@ -434,20 +385,50 @@ class NightfallDefendersGame(ShowBase):
     
     def update_ui(self):
         """Update UI elements"""
-        if hasattr(self, 'player'):
+        if hasattr(self, 'player') and self.player is not None:
             # Update health display
-            self.health_text.setText(f"Health: {self.player.health}/{self.player.max_health}")
+            self.player_stats_box.update_value(0, f"{self.player.health}/{self.player.max_health}")
+            
+            # Update level display
+            self.player_stats_box.update_value(1, str(self.player.level))
             
             # Update experience display
-            self.exp_text.setText(
-                f"Level: {self.player.level} | XP: {self.player.experience}/{self.player.experience_to_next_level}"
-            )
-            
-            # Update inventory display
-            self.inventory_text.setText(self.player.get_inventory_string())
+            self.player_stats_box.update_value(2, f"{self.player.experience}/{self.player.experience_to_next_level}")
             
             # Update skill points display
-            self.skill_points_text.setText(f"Skill Points: {self.player.skill_points}")
+            self.player_stats_box.update_value(3, str(self.player.skill_points))
+            
+            # Update inventory box
+            if hasattr(self.player, 'get_inventory_string'):
+                inventory_string = self.player.get_inventory_string()
+                # Clear the inventory box
+                self.inventory_box.clear()
+                
+                # Add items to inventory box
+                if hasattr(self.player, 'inventory') and isinstance(self.player.inventory, dict):
+                    for i, (item, amount) in enumerate(self.player.inventory.items()):
+                        if amount > 0:
+                            self.inventory_box.add_text_row(item.replace('_', ' ').title(), str(amount))
+            
+            # Update ability info
+            if hasattr(self.player, 'current_primary_ability'):
+                primary = getattr(self.player, 'current_primary_ability', "None")
+                self.ability_box.update_value(0, primary)
+                
+            if hasattr(self.player, 'current_secondary_ability'):
+                secondary = getattr(self.player, 'current_secondary_ability', "None")
+                self.ability_box.update_value(1, secondary)
+            
+            # Update experience bar
+            self.update_exp_bar()
+        else:
+            # Default values when no player exists
+            self.player_stats_box.update_value(0, "N/A")
+            self.player_stats_box.update_value(1, "N/A")
+            self.player_stats_box.update_value(2, "N/A")
+            self.player_stats_box.update_value(3, "N/A")
+            self.ability_box.update_value(0, "None")
+            self.ability_box.update_value(1, "None")
         
         # Update time display
         if hasattr(self, 'day_night_cycle'):
@@ -464,43 +445,47 @@ class NightfallDefendersGame(ShowBase):
                 # Get current time string from the day/night cycle
                 time_str = getattr(self.day_night_cycle, 'current_time_name', "00:00")
             
-            self.time_text.setText(f"Time: Day {day}, {time_str}")
+            self.game_info_box.update_value(0, f"Day {day}, {time_str}")
+            
+            # Update time of day
+            if hasattr(self.day_night_cycle, 'time_of_day'):
+                time_of_day = self.day_night_cycle.time_of_day
+                self.game_info_box.update_value(1, str(time_of_day))
         
         # Update FPS display
         if self.show_fps:
             fps = round(globalClock.getAverageFrameRate(), 1)
-            self.fps_text.setText(f"FPS: {fps}")
+            self.game_info_box.update_value(2, str(fps))
     
     def set_player_moving(self, is_pressed, direction):
-        """Set player movement state"""
-        if hasattr(self, 'player'):
-            self.player.set_moving(is_pressed, direction)
+        """Set player movement direction"""
+        if not self.game_started or not hasattr(self, 'player'):
+            return
+        self.player.set_moving(is_pressed, direction)
     
     def player_primary_attack(self):
-        """Handle player primary attack input"""
-        if hasattr(self, 'player') and not self.paused:
-            self.player.perform_primary_attack()
-            # Play attack sound
-            if hasattr(self, 'audio_manager'):
-                self.audio_manager.play_combat_sound("swing", 1.0, self.player.get_position())
+        """Trigger player's primary attack"""
+        if not self.game_started or not hasattr(self, 'player'):
+            return
+        self.player.primary_attack()
     
     def player_secondary_attack(self):
-        """Handle player secondary attack input"""
-        if hasattr(self, 'player') and not self.paused:
-            self.player.perform_secondary_attack()
-            # Play attack sound
-            if hasattr(self, 'audio_manager'):
-                self.audio_manager.play_combat_sound("magic", 1.0, self.player.get_position())
+        """Trigger player's secondary attack"""
+        if not self.game_started or not hasattr(self, 'player'):
+            return
+        self.player.secondary_attack()
     
     def player_dodge(self):
-        """Handle player dodge input"""
-        if hasattr(self, 'player') and not self.paused:
-            self.player.dodge()
+        """Trigger player's dodge maneuver"""
+        if not self.game_started or not hasattr(self, 'player'):
+            return
+        self.player.dodge()
     
     def player_interact(self):
-        """Handle player interact input"""
-        if hasattr(self, 'player') and not self.paused:
-            self.player.interact()
+        """Player interaction with the world"""
+        if not self.game_started or not hasattr(self, 'player'):
+            return
+        self.player.interact()
     
     def toggle_debug(self):
         """Toggle debug mode"""
@@ -520,6 +505,14 @@ class NightfallDefendersGame(ShowBase):
     
     def toggle_skill_tree(self):
         """Toggle skill tree UI"""
+        # Check if player exists
+        if not hasattr(self, 'player') or self.player is None:
+            if hasattr(self, 'notification_system'):
+                self.notification_system.add_notification("You must select a class first!", duration=2.0, type="error")
+            else:
+                print("You must select a class first!")
+            return
+            
         if hasattr(self, 'skill_tree_ui'):
             # Only show if player has a class
             if hasattr(self.player, 'character_class') and self.player.character_class:
@@ -528,55 +521,124 @@ class NightfallDefendersGame(ShowBase):
                 else:
                     self.skill_tree_ui.hide()
             else:
-                print("You must select a class first!")
+                if hasattr(self, 'notification_system'):
+                    self.notification_system.add_notification("You must select a class first!", duration=2.0, type="error")
+                else:
+                    print("You must select a class first!")
     
     def toggle_pause(self):
-        """Toggle game pause"""
-        self.set_paused(not self.paused)
+        """Toggle pause state"""
+        self.paused = not self.paused
+        self.set_paused(self.paused)
     
     def set_paused(self, paused):
-        """Set game pause state"""
+        """
+        Set the pause state
+        
+        Args:
+            paused: Whether to pause the game
+        """
         self.paused = paused
         
-        # Show pause indicator if paused
-        if hasattr(self, 'pause_text'):
-            if paused:
-                self.pause_text.show()
+        # Show/hide pause menu
+        if hasattr(self, 'pause_menu'):
+            if self.paused:
+                self.pause_menu.show()
             else:
-                self.pause_text.hide()
+                self.pause_menu.hide()
+        
+        if self.paused:
+            # Disable controls when paused
+            self.disable_controls()
+            
+            # Notify with text or sound
+            if hasattr(self, 'notification_system'):
+                self.notification_system.add_notification("Game Paused", duration=1.0, type="info")
         else:
-            # Create pause text if it doesn't exist
-            if paused:
-                self.pause_text = OnscreenText(
-                    text="PAUSED", 
-                    pos=(0, 0), 
-                    scale=0.1,
-                    fg=(1, 1, 1, 1),
-                    shadow=(0, 0, 0, 0.5)
-                )
-            else:
-                self.pause_text = OnscreenText(
-                    text="PAUSED", 
-                    pos=(0, 0), 
-                    scale=0.1,
-                    fg=(1, 1, 1, 1),
-                    shadow=(0, 0, 0, 0.5)
-                )
-                self.pause_text.hide()
+            # Re-enable controls when unpaused
+            self.enable_controls()
+            
+            # Notify with text or sound
+            if hasattr(self, 'notification_system'):
+                self.notification_system.add_notification("Game Resumed", duration=1.0, type="info")
+    
+    def disable_controls(self):
+        """Disable player controls"""
+        self.ignore("w")
+        self.ignore("s")
+        self.ignore("a")
+        self.ignore("d")
+        self.ignore("mouse1")
+        self.ignore("mouse3")
+        self.ignore("space")
+        self.ignore("e")
+    
+    def enable_controls(self):
+        """Re-enable player controls"""
+        # Movement keys
+        self.accept("w", self.set_player_moving, [True, 0])  # Forward
+        self.accept("w-up", self.set_player_moving, [False, 0])
+        self.accept("s", self.set_player_moving, [True, 1])  # Backward
+        self.accept("s-up", self.set_player_moving, [False, 1])
+        self.accept("a", self.set_player_moving, [True, 2])  # Left
+        self.accept("a-up", self.set_player_moving, [False, 2])
+        self.accept("d", self.set_player_moving, [True, 3])  # Right
+        self.accept("d-up", self.set_player_moving, [False, 3])
+        
+        # Action keys
+        self.accept("mouse1", self.player_primary_attack)  # Primary attack
+        self.accept("mouse3", self.player_secondary_attack)  # Secondary attack
+        self.accept("space", self.player_dodge)  # Dodge
+        self.accept("e", self.player_interact)  # Interact
     
     def on_class_selected(self, class_type):
-        """Handle class selection"""
-        if hasattr(self, 'player'):
-            success = self.player.set_class(class_type)
+        """
+        Handle class selection
+        
+        Args:
+            class_type: The selected character class
+        """
+        print(f"Selected class: {class_type}")
+        
+        # Close class selection UI if it exists
+        if hasattr(self, 'class_selection_ui'):
+            self.class_selection_ui.hide()
+        
+        # Set player class
+        self.selected_class = class_type
+        
+        # Now create the world
+        if not hasattr(self, 'player'):
+            # First create UI elements if not already done
+            if not self.ui_initialized:
+                self.create_ui()
             
-            if success:
-                print(f"You have chosen the {class_type.value} class!")
-                
-                # Grant initial resources
-                self.player.inventory["monster_essence"] = 20
-                
-                # Update UI
-                self.player.show_current_ability()
+            # Initialize skill tree UI
+            self.skill_tree_ui = SkillTreeUI(self, None, None)  # Will be properly initialized when player is created
+            
+            # Create the game world
+            self.create_world()
+            
+            # Show notification
+            if hasattr(self, 'notification_system'):
+                self.notification_system.show_notification(f"You begin your journey as a {class_type}", "info", 3.0)
+    
+    def start_new_game(self):
+        """Start a new game"""
+        print("Starting new game!")
+        
+        # Hide main menu
+        self.main_menu.hide()
+        
+        # Set game_started flag
+        self.game_started = True
+        
+        # Open class selection UI
+        from game.class_selection_ui import ClassSelectionUI
+        self.class_selection_ui = ClassSelectionUI(self, self.on_class_selected)
+        
+        # Or create the world immediately (uncomment if you want to skip class selection)
+        # self.create_world()
     
     def give_skill_point(self):
         """Debug function to give a skill point"""
@@ -755,9 +817,125 @@ class NightfallDefendersGame(ShowBase):
             self.renderer.color_grading_quad.setShaderInput("saturation", saturation)
             self.renderer.color_grading_quad.setShaderInput("brightness", brightness)
 
+    def create_player(self):
+        """Create the player after class selection"""
+        # Create the player
+        self.player = Player(self)
+        self.player.position = LVector3f(0, 0, 0)
+        
+        # Set player class based on selection
+        if hasattr(self, 'selected_class'):
+            self.player.set_class(self.selected_class)
+            
+            # Grant initial resources
+            self.player.inventory["monster_essence"] = 20
+            
+            # Update UI
+            self.player.show_current_ability()
+        
+        # Initialize the skill tree UI with the player instance
+        if hasattr(self, 'skill_tree_ui'):
+            self.skill_tree_ui.player = self.player
+            self.skill_tree_ui.skill_tree = self.player.skill_tree
+        
+        # Set up physics for the player
+        if hasattr(self, 'physics_manager'):
+            self.physics_manager.register_physics_entity(
+                "player", 
+                self.player.get_position(), 
+                0.5,  # Radius
+                1.0   # Mass
+            )
+            
+            # Create character rig for player
+            player_rig = self.physics_manager.create_character_rig("player", 2.0)
+            
+            # Example cloth (flag or cape)
+            if self.render:
+                flag_position = Vec3(5, 0, 3)  # Some position in the world
+                self.physics_manager.create_cloth(
+                    flag_position, 
+                    2.0,   # Width
+                    1.5,   # Height
+                    self.render,
+                    None,  # No texture for now
+                    "flag"
+                )
+
+    def create_terrain(self):
+        """Create the game terrain"""
+        # Create ground plane
+        try:
+            # Try to load plane model first
+            ground = self.loader.loadModel("models/plane")
+        except:
+            # Fallback to box model if plane isn't available
+            print("Plane model not found, using box model for ground instead")
+            ground = self.loader.loadModel("models/box")
+            ground.setScale(100, 100, 0.1)  # Make it flat like a plane
+        
+        ground.setColor(0.3, 0.6, 0.3, 1)  # Green color
+        ground.reparentTo(self.render)
+        
+        # Add some decoration to the terrain (trees, rocks, etc.)
+        self.add_environment_objects()
+    
+    def add_environment_objects(self):
+        """Add decorative objects to the environment"""
+        # Add some trees
+        try:
+            for i in range(20):
+                x = random.uniform(-50, 50)
+                y = random.uniform(-50, 50)
+                
+                # Don't place trees too close to the player start position
+                if abs(x) < 10 and abs(y) < 10:
+                    continue
+                    
+                tree = self.loader.loadModel("models/tree")
+                tree.setPos(x, y, 0)
+                tree.setScale(random.uniform(0.8, 1.2))
+                tree.reparentTo(self.render)
+        except:
+            print("Tree models not available, skipping environment decoration")
+    
+    def setup_lighting(self):
+        """Set up scene lighting"""
+        # Create ambient light
+        ambient_light = self.render.attachNewNode(AmbientLight("ambientLight"))
+        ambient_light.node().setColor((0.4, 0.4, 0.4, 1))
+        self.render.setLight(ambient_light)
+        
+        # Create directional light (sun/moon)
+        directional_light = self.render.attachNewNode(DirectionalLight("directionalLight"))
+        directional_light.node().setColor((0.8, 0.8, 0.7, 1))
+        directional_light.node().setShadowCaster(True, 512, 512)
+        directional_light.setHpr(60, -60, 0)
+        self.render.setLight(directional_light)
+        
+        # Store lights for day/night cycle
+        self.lights = {
+            "ambient": ambient_light,
+            "directional": directional_light
+        }
+        
+        # Connect to day/night cycle
+        if hasattr(self, 'day_night_cycle'):
+            self.day_night_cycle.set_lights(self.lights)
+
 
 def main():
     """Main entry point"""
+    # Check for missing essential assets
+    main_menu_bg_path = os.path.join("src", "assets", "generated", "ui", "main_menu_bg.png")
+    if not os.path.exists(main_menu_bg_path):
+        print("Main menu background not found. Generating missing assets...")
+        try:
+            import subprocess
+            subprocess.call([sys.executable, "fix_missing_assets.py"])
+        except Exception as e:
+            print(f"Error generating assets: {e}")
+    
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Run Nightfall Defenders')
     parser.add_argument('--enable-enhanced-audio', action='store_true', 

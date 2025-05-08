@@ -2,18 +2,17 @@
 # -*- coding: utf-8 -*-
 
 """
-Physics package for Nightfall Defenders
-Contains Verlet integration, cloth simulation, and physics management
+Physics module for Nightfall Defenders
+Provides physics simulation systems for the game
 """
 
-from src.engine.physics.verlet import VerletSystem, VerletPoint, VerletConstraint, DistanceConstraint, AngleConstraint
-from src.engine.physics.cloth_system import ClothSystem
-from src.engine.physics.physics_manager import PhysicsManager, SpatialGrid, SpatialCell
+from .verlet import VerletSystem, VerletPoint, DistanceConstraint, AngleConstraint
+from .cloth_system import ClothSystem
+from .physics_manager import PhysicsManager, SpatialGrid, SpatialCell
 
 __all__ = [
     'VerletSystem',
     'VerletPoint',
-    'VerletConstraint',
     'DistanceConstraint',
     'AngleConstraint',
     'ClothSystem',

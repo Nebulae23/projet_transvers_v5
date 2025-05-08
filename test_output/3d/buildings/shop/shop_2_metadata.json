@@ -2,17 +2,17 @@
   "model_type": "building",
   "building_type": "shop",
   "procedural_params": {
-    "width": 10.684234654493899,
-    "depth": 8.626559560989072,
-    "height": 3.2714961651385837,
+    "width": 9.009141050635968,
+    "depth": 8.948396739220875,
+    "height": 3.2159323047531743,
     "storefront": true,
     "sign": true,
-    "material": "wood"
+    "material": "brick"
   },
-  "generated_at": 1746720935.5020053,
+  "generated_at": 1746730237.4302032,
   "format": "bam",
-  "vertices": 2682,
-  "triangles": 332,
+  "vertices": 2686,
+  "triangles": 1688,
   "has_collision": true,
   "has_textures": true,
   "texture_resolution": "1024x1024"

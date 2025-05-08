@@ -2,16 +2,16 @@
   "model_type": "prop",
   "prop_type": "chest",
   "procedural_params": {
-    "width": 1.2339305169495085,
-    "depth": 0.9087791290331114,
-    "height": 0.9386117840710337,
-    "material": "metal",
+    "width": 1.4349756509730742,
+    "depth": 0.89903684125376,
+    "height": 0.9642744917660596,
+    "material": "wood",
     "has_lock": false
   },
-  "generated_at": 1746720935.5133045,
+  "generated_at": 1746730237.4376645,
   "format": "bam",
-  "vertices": 339,
-  "triangles": 433,
+  "vertices": 749,
+  "triangles": 289,
   "has_collision": true,
   "has_textures": true,
   "texture_resolution": "512x512"

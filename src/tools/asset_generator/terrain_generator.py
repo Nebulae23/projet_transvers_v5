@@ -491,24 +491,83 @@ class TerrainGenerator:
     
     def save_tile(self, tile, filename):
         """
-        Save a tile to file
+        Save a generated tile to disk
         
         Args:
-            tile (PIL.Image): The tile to save
-            filename (str): Output filename
+            tile (PIL.Image): The tile image to save
+            filename (str): The filename to save as
+        """
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        
+        try:
+            tile.save(filename)
+            print(f"Saved terrain tile to {filename}")
+        except Exception as e:
+            print(f"Error saving terrain tile: {e}")
+    
+    def generate_with_cache(self, asset_id, params=None, seed=None):
+        """
+        Generate a terrain asset with caching support
+        
+        Args:
+            asset_id (str): Identifier for the asset
+            params (dict): Parameters for generation
+            seed (int): Random seed for generation
             
         Returns:
-            str: Full path to the saved file
+            PIL.Image: The generated terrain
         """
-        terrain_type = filename.split('_')[0]
-        if terrain_type in self.terrain_dirs:
-            output_dir = self.terrain_dirs[terrain_type]
-        else:
-            output_dir = self.output_dir
-            
-        full_path = os.path.join(output_dir, filename)
-        tile.save(full_path, "PNG")
-        return full_path
+        if params is None:
+            params = {}
+        
+        # Extract terrain type from asset_id if not in params
+        if "terrain_type" not in params:
+            parts = asset_id.split('_')
+            if parts and parts[0] in self.terrain_palettes:
+                params["terrain_type"] = parts[0]
+            else:
+                # Default to grass if no terrain type found
+                params["terrain_type"] = "grass"
+        
+        # Generate the terrain tile
+        return self.generate_tile(params["terrain_type"], seed)
+    
+    def save_asset(self, asset, output_path):
+        """
+        Save the generated asset to disk
+        
+        Args:
+            asset (PIL.Image): The asset to save
+            output_path (str): Path to save the asset to
+        """
+        try:
+            asset.save(output_path)
+            print(f"Saved terrain asset to {output_path}")
+        except Exception as e:
+            print(f"Error saving terrain asset: {e}")
+    
+    def save_metadata(self, asset_id, metadata):
+        """
+        Save metadata for the generated asset
+        
+        Args:
+            asset_id (str): Identifier for the asset
+            metadata (dict): Metadata to save
+        """
+        # Create metadata directory if it doesn't exist
+        metadata_dir = os.path.join(self.output_dir, "metadata")
+        os.makedirs(metadata_dir, exist_ok=True)
+        
+        # Save metadata to JSON file
+        import json
+        metadata_path = os.path.join(metadata_dir, f"{asset_id}.json")
+        
+        try:
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+        except Exception as e:
+            print(f"Error saving metadata: {e}")
     
     def generate_all_terrain_types(self, variations_per_type=3, seed=None):
         """

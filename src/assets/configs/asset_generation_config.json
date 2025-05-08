@@ -71,5 +71,65 @@
                 "texture_resolution": "medium"
             }
         }
+    },
+    "pbr_materials": {
+        "material_types": ["stone", "wood", "metal", "fabric", "leather", "grass", "water", "snow", "sand"],
+        "base_size": 512,
+        "maps": ["diffuse", "normal", "roughness", "metallic", "ambient_occlusion", "height", "emissive"],
+        "noise_types": ["perlin", "simplex", "worley", "fractal", "curl"],
+        "presets": {
+            "stone": {
+                "noise_type": "fractal",
+                "noise_scale": 0.1,
+                "octaves": 6,
+                "persistence": 0.5,
+                "lacunarity": 2.0,
+                "base_color": [0.7, 0.7, 0.7],
+                "color_variation": 0.2,
+                "roughness_base": 0.7,
+                "metallic_base": 0.0,
+                "height_scale": 1.0
+            },
+            "wood": {
+                "noise_type": "simplex",
+                "noise_scale": 0.05,
+                "octaves": 4,
+                "persistence": 0.6,
+                "lacunarity": 2.0,
+                "base_color": [0.6, 0.4, 0.2],
+                "color_variation": 0.15,
+                "roughness_base": 0.5,
+                "metallic_base": 0.0,
+                "grain_amount": 0.8,
+                "grain_orientation": 0.0,
+                "height_scale": 0.6
+            },
+            "metal": {
+                "noise_type": "simplex",
+                "noise_scale": 0.03,
+                "octaves": 2,
+                "persistence": 0.5,
+                "lacunarity": 2.0,
+                "base_color": [0.8, 0.8, 0.9],
+                "color_variation": 0.1,
+                "roughness_base": 0.3,
+                "metallic_base": 0.9,
+                "height_scale": 0.2
+            }
+        },
+        "context_rules": {
+            "environments": ["snow", "desert", "wet"],
+            "aging": {
+                "min": 0.0,
+                "max": 1.0,
+                "steps": 5
+            }
+        },
+        "ml_refinement": {
+            "enabled": true,
+            "model_path": "models/texture_refiner.onnx"
+        },
+        "output_formats": ["PNG", "JPEG", "TGA"],
+        "cache_enabled": true
     }
 } 

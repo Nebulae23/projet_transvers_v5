@@ -1,0 +1,34 @@
+{
+  "effect_type": "water",
+  "intensity": 1.1086320499795943,
+  "scale": 0.9112828510768437,
+  "effect_types": [
+    "fire",
+    "water",
+    "lightning",
+    "magic",
+    "healing"
+  ],
+  "variations_per_type": 3,
+  "animation_frames": 8,
+  "particle_count_ranges": {
+    "fire": {
+      "min": 50,
+      "max": 150
+    },
+    "water": {
+      "min": 30,
+      "max": 100
+    },
+    "lightning": {
+      "min": 5,
+      "max": 20
+    }
+  },
+  "hybrid_approach": true,
+  "asset_id": "water_1",
+  "asset_type": "effect",
+  "asset_category": "effects",
+  "generated_at": 1746737962.1377308,
+  "seed": null
+}

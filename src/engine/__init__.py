@@ -6,11 +6,11 @@ Nightfall Defenders - Engine Module
 Core engine components for the game
 """
 
-from engine.config import GameConfig
-from engine.resource_manager import ResourceManager
-from engine.renderer import Renderer
-from engine.input_manager import InputManager
-from engine.scene_manager import SceneManager
+from .config import GameConfig
+from .resource_manager import ResourceManager
+from .renderer import Renderer
+from .input_manager import InputManager
+from .scene_manager import SceneManager
 
 __all__ = [
     'GameConfig',

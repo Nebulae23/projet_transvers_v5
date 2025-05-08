@@ -1,0 +1,17 @@
+<CoordinateSystem> { Z-up }
+
+<Comment> { "Simple Plane Model" }
+
+<Group> plane {
+  <VertexPool> plane_verts {
+    <Vertex> 1 { -10 0 -10 <UV> { 0 0 } <Normal> { 0 1 0 } }
+    <Vertex> 2 { 10 0 -10 <UV> { 1 0 } <Normal> { 0 1 0 } }
+    <Vertex> 3 { 10 0 10 <UV> { 1 1 } <Normal> { 0 1 0 } }
+    <Vertex> 4 { -10 0 10 <UV> { 0 1 } <Normal> { 0 1 0 } }
+  }
+  
+  <Polygon> {
+    <Normal> { 0 1 0 }
+    <VertexRef> { 1 2 3 4 <Ref> { plane_verts } }
+  }
+}

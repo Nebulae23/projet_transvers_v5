@@ -2,16 +2,16 @@
   "model_type": "building",
   "building_type": "house",
   "procedural_params": {
-    "width": 5.4140119873073065,
-    "depth": 5.094856031848152,
-    "height": 3.6672156741215076,
-    "roof_style": "peaked",
-    "material": "brick"
+    "width": 8.735514524273512,
+    "depth": 9.044557436567615,
+    "height": 4.523323936896882,
+    "roof_style": "flat",
+    "material": "wood"
   },
-  "generated_at": 1746720935.500379,
+  "generated_at": 1746730237.4275503,
   "format": "bam",
-  "vertices": 2415,
-  "triangles": 625,
+  "vertices": 1794,
+  "triangles": 1818,
   "has_collision": true,
   "has_textures": true,
   "texture_resolution": "1024x1024"

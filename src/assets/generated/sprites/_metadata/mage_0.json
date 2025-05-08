@@ -1,0 +1,23 @@
+{
+  "sprite_type": "character",
+  "class_type": "mage",
+  "class_types": [
+    "warrior",
+    "mage",
+    "cleric",
+    "alchemist",
+    "ranger",
+    "summoner"
+  ],
+  "variations_per_class": 2,
+  "animation_frames": {
+    "idle": 4,
+    "walk": 8,
+    "attack": 6
+  },
+  "asset_id": "mage_0",
+  "asset_type": "sprite_2d",
+  "asset_category": "characters",
+  "generated_at": 1746737961.8295503,
+  "seed": null
+}

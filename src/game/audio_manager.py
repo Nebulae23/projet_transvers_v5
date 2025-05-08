@@ -47,6 +47,9 @@ class AudioManager:
         # Active sounds (currently playing)
         self.active_sounds = {}
         
+        # Missing sound files set - to avoid repeated warnings
+        self.missing_sound_files = set()
+        
         # Music system
         self.current_music = None
         self.next_music = None
@@ -165,7 +168,10 @@ class AudioManager:
             if os.path.exists(asset_path):
                 sound_path = asset_path
             else:
-                print(f"Warning: Sound file not found: {sound_path}")
+                # Only print warning once per sound file
+                if sound_path not in self.missing_sound_files:
+                    print(f"Warning: Sound file not found: {sound_path}")
+                    self.missing_sound_files.add(sound_path)
                 return None
         
         try:
@@ -179,10 +185,16 @@ class AudioManager:
                 self.sound_cache[cache_key] = sound
                 return sound
             else:
-                print(f"Warning: Failed to load sound: {sound_path}")
+                # Only print warning once per sound file
+                if sound_path not in self.missing_sound_files:
+                    print(f"Warning: Failed to load sound: {sound_path}")
+                    self.missing_sound_files.add(sound_path)
                 return None
         except Exception as e:
-            print(f"Error loading sound {sound_path}: {e}")
+            # Only print warning once per sound file
+            if sound_path not in self.missing_sound_files:
+                print(f"Error loading sound {sound_path}: {e}")
+                self.missing_sound_files.add(sound_path)
             return None
     
     def play_sound(self, sound_name: str, volume: float = 1.0, loop: bool = False, 
@@ -220,7 +232,7 @@ class AudioManager:
             if category == SoundCategory.MUSIC:
                 sound_path = f"music/{sound_name}.ogg"
             elif category == SoundCategory.AMBIENT:
-                sound_path = f"ambient/{sound_name}.ogg"
+                sound_path = f"ambient/{sound_name}.wav"
             elif category == SoundCategory.UI:
                 sound_path = f"ui/{sound_name}.wav"
             elif category == SoundCategory.VOICE:

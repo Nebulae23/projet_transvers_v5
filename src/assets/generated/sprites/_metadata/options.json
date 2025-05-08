@@ -1,0 +1,30 @@
+{
+  "sprite_type": "ui_element",
+  "ui_type": "options",
+  "button_states": [
+    "normal",
+    "hover",
+    "pressed",
+    "disabled"
+  ],
+  "panel_types": [
+    "inventory",
+    "character",
+    "map",
+    "options"
+  ],
+  "icon_types": [
+    "health",
+    "mana",
+    "stamina",
+    "attack",
+    "defense",
+    "speed"
+  ],
+  "use_2d_sprites": true,
+  "asset_id": "options",
+  "asset_type": "sprite_2d",
+  "asset_category": "ui",
+  "generated_at": 1746737961.8853667,
+  "seed": null
+}

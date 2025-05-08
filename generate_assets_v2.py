@@ -46,10 +46,11 @@ def main():
     
     # Initialiser le système de génération d'assets
     try:
-        from src.tools.asset_generator.asset_generator_system import generate_all_assets
+        from src.tools.asset_generator.asset_generator_system import AssetGeneratorSystem
         
-        # Générer tous les assets
-        stats = generate_all_assets(output_dir, config, seed)
+        # Créer le générateur d'assets et générer tous les assets
+        generator = AssetGeneratorSystem(output_dir, config)
+        stats = generator.generate_all(seed)
         
         # Calculer la durée
         duration = time.time() - start_time
@@ -71,6 +72,8 @@ def main():
     
     except Exception as e:
         print(f"ERREUR: La génération d'assets a échoué: {e}")
+        import traceback
+        traceback.print_exc()
         return 1
 
 def load_config(config_file=None):
@@ -83,16 +86,34 @@ def load_config(config_file=None):
     Returns:
         dict: Configuration chargée
     """
-    # Configuration par défaut
-    default_config = {
+    # Si un fichier de configuration est spécifié, le charger
+    if config_file and os.path.exists(config_file):
+        try:
+            with open(config_file, 'r') as f:
+                return json.load(f)
+                
+            print(f"Configuration chargée depuis {config_file}")
+        except Exception as e:
+            print(f"Erreur lors du chargement de la configuration: {e}")
+            print("Utilisation de la configuration par défaut")
+    
+    # Sinon, charger la configuration par défaut depuis le fichier assets/configs/asset_generation_config.json
+    default_config_path = os.path.join("src", "assets", "configs", "asset_generation_config.json")
+    if os.path.exists(default_config_path):
+        try:
+            with open(default_config_path, 'r') as f:
+                return json.load(f)
+                
+            print(f"Configuration chargée depuis {default_config_path}")
+        except Exception as e:
+            print(f"Erreur lors du chargement de la configuration par défaut: {e}")
+    
+    # Si tout échoue, retourner une configuration minimale
+    print("Utilisation d'une configuration minimale")
+    return {
         "characters": {
             "class_types": ["warrior", "mage", "cleric", "alchemist", "ranger", "summoner"],
             "variations_per_class": 1,
-            "animation_frames": {
-                "idle": 4,
-                "walk": 8,
-                "attack": 6
-            }
         },
         "terrain": {
             "terrain_types": ["grass", "forest", "mountain", "water", "desert", "snow"],
@@ -107,32 +128,13 @@ def load_config(config_file=None):
             "variations_per_type": 1
         },
         "ui": {
-            "button_states": ["normal", "hover", "pressed", "disabled"],
             "panel_types": ["inventory", "character", "map", "options"],
-            "icon_types": ["health", "mana", "stamina", "attack", "defense", "speed"]
         },
         "effects": {
             "effect_types": ["fire", "water", "lightning", "magic", "healing"],
             "variations_per_type": 2
         }
     }
-    
-    # Si un fichier de configuration est spécifié, le charger
-    if config_file and os.path.exists(config_file):
-        try:
-            with open(config_file, 'r') as f:
-                custom_config = json.load(f)
-                
-            # Fusionner avec la configuration par défaut
-            for key, value in custom_config.items():
-                default_config[key] = value
-                
-            print(f"Configuration chargée depuis {config_file}")
-        except Exception as e:
-            print(f"Erreur lors du chargement de la configuration: {e}")
-            print("Utilisation de la configuration par défaut")
-    
-    return default_config
 
 def filter_config_by_mode(config, mode):
     """

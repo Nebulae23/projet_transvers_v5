@@ -151,3 +151,187 @@ Le système utilise les bibliothèques suivantes :
 - Panda3D pour la génération et manipulation de modèles 3D
 - NumPy pour les opérations mathématiques et génération de bruit
 - Tqdm pour l'affichage de la progression 
+
+## Générateur Hybride PBR
+
+Le système d'asset generation de Nightfall Defenders inclut maintenant un générateur hybride qui combine techniques procédurales avancées, rendu PBR (Physically Based Rendering) et raffinement par machine learning pour créer des textures et matériaux réalistes.
+
+### Principe du générateur hybride
+
+Le générateur hybride fonctionne en trois phases principales :
+
+1. **Génération procédurale avancée** : Utilisation d'algorithmes de bruit sophistiqués (Simplex, Worley, fractals) pour créer les structures de base.
+
+2. **Pipeline PBR complet** : Génération automatique de maps PBR cohérentes (diffuse, normal, roughness, metallic, AO, height) depuis une base procédurale.
+
+3. **Raffinement par machine learning** : Application optionnelle d'un modèle ML léger pour améliorer le réalisme des textures générées.
+
+### Types de matériaux supportés
+
+Le générateur hybride prend en charge différents types de matériaux avec des préréglages spécifiques :
+
+- **Stone** (pierre) : Surfaces rocheuses avec variations de hauteur significatives
+- **Wood** (bois) : Grain de bois directionnel et texture organique
+- **Metal** (métal) : Surfaces lisses avec réflexion élevée
+- **Fabric** (tissu) : Textures tissées avec microdétails
+- **Leather** (cuir) : Texture avec imperfections de surface naturelles
+
+### Maps PBR générées
+
+Pour chaque matériau, le générateur produit les maps suivantes :
+
+- **Diffuse/Albedo** : Couleur de base du matériau
+- **Normal** : Détails de surface (bosses, rainures)
+- **Roughness** : Rugosité de la surface (brillant vs. mat)
+- **Metallic** : Propriétés métalliques de la surface
+- **Ambient Occlusion** : Ombres subtiles dans les crevasses
+- **Height** : Déplacements de géométrie (utilisée pour le parallax mapping ou le displacement)
+- **Emissive** (facultatif) : Zones auto-illuminées
+
+### Système de règles contextuelles
+
+Un aspect unique du générateur hybride est sa capacité à adapter les matériaux au contexte environnemental :
+
+- **Environnements** : Adaptation automatique aux environnements neige, désert, ou zones humides
+- **Vieillissement** : Simulation de l'usure, patine, et détérioration avec le temps
+- **Position spatiale** : Adaptation aux caractéristiques topographiques (ex: mousse au nord)
+
+### Paramètres de configuration
+
+Les paramètres du générateur hybride sont configurés dans `src/assets/configs/asset_generation_config.json` dans la section `pbr_materials` :
+
+```json
+"pbr_materials": {
+    "material_types": ["stone", "wood", "metal", "fabric", "leather", "grass", "water", "snow", "sand"],
+    "base_size": 512,
+    "maps": ["diffuse", "normal", "roughness", "metallic", "ambient_occlusion", "height", "emissive"],
+    "noise_types": ["perlin", "simplex", "worley", "fractal", "curl"],
+    "presets": {
+        "stone": {
+            "noise_type": "fractal",
+            "noise_scale": 0.1,
+            "octaves": 6,
+            "persistence": 0.5,
+            "lacunarity": 2.0,
+            "base_color": [0.7, 0.7, 0.7],
+            "color_variation": 0.2,
+            "roughness_base": 0.7,
+            "metallic_base": 0.0,
+            "height_scale": 1.0
+        },
+        // Autres préréglages...
+    }
+}
+```
+
+### Utilisation du générateur hybride
+
+Il existe plusieurs façons d'utiliser le générateur hybride :
+
+1. **Utilisation directe** :
+
+```python
+from src.tools.asset_generator.hybrid_generator import HybridGenerator
+
+generator = HybridGenerator("./output_dir")
+material = generator.generate(
+    "stone_wall", 
+    {
+        "material": "stone",
+        "size": (512, 512),
+        "context": {"environment": "snow", "age_factor": 0.5}
+    },
+    seed=42
+)
+generator.save_asset(material, "./output_dir/stone_wall")
+```
+
+2. **Via le système de génération** :
+
+```python
+from src.tools.asset_generator.asset_generator_system import AssetGeneratorSystem
+
+system = AssetGeneratorSystem()
+asset, path = system.generate_pbr_material(
+    "stone",
+    "stone_wall",
+    context="snow",
+    age_factor=0.5,
+    seed=42
+)
+```
+
+3. **Via le script de ligne de commande** :
+
+```bash
+python generate_hybrid_materials.py --material stone --contexts snow --age --size 1024
+```
+
+### Génération de lots
+
+Pour générer des séries de matériaux liés, utilisez le script de test :
+
+```bash
+python test_hybrid_generator.py --materials stone wood metal --contexts snow desert wet --age
+```
+
+### Exemple du pipeline
+
+Pour une texture de pierre avec de la neige :
+
+1. Génération de la heightmap de base avec du bruit fractal
+2. Création de la normal map à partir de la heightmap
+3. Création de la diffuse map avec variation de couleur selon la heightmap
+4. Génération des maps roughness, metallic et AO
+5. Application du contexte "neige" sur les zones supérieures
+6. Application optionnelle du raffinement ML
+
+### Intégration avec le pipeline 3D
+
+Les textures générées peuvent être utilisées avec la plupart des moteurs 3D, y compris Panda3D. Pour intégrer les matériaux PBR dans Panda3D, vous pouvez utiliser l'exemple suivant :
+
+```python
+from panda3d.core import TextureStage, Texture, SamplerState
+from panda3d.core import Material
+
+# Charger les maps PBR
+diffuse_tex = loader.loadTexture("materials/stone/stone_diffuse.png")
+normal_tex = loader.loadTexture("materials/stone/stone_normal.png")
+roughness_tex = loader.loadTexture("materials/stone/stone_roughness.png")
+metallic_tex = loader.loadTexture("materials/stone/stone_metallic.png")
+
+# Configurer le matériau
+material = Material()
+material.setName("stone_material")
+material.setDiffuse((1, 1, 1, 1))
+material.setSpecular((1, 1, 1, 1))
+material.setShininess(10)
+
+# Appliquer les textures au modèle
+model = loader.loadModel("models/wall.egg")
+model.setMaterial(material)
+
+# Diffuse map (base color)
+ts_diffuse = TextureStage("diffuse")
+ts_diffuse.setMode(TextureStage.MModulate)
+model.setTexture(ts_diffuse, diffuse_tex)
+
+# Normal map
+ts_normal = TextureStage("normal")
+ts_normal.setMode(TextureStage.MNormal)
+model.setTexture(ts_normal, normal_tex)
+
+# Roughness map
+ts_rough = TextureStage("roughness")
+ts_rough.setMode(TextureStage.MSelector)
+model.setTexture(ts_rough, roughness_tex)
+
+# Metallic map
+ts_metal = TextureStage("metallic")
+ts_metal.setMode(TextureStage.MSelector)
+model.setTexture(ts_metal, metallic_tex)
+```
+
+## Conclusion
+
+Le système de génération d'assets de Nightfall Defenders offre une solution complète et flexible pour générer tous les types d'assets nécessaires au jeu. En combinant des approches 2D et 3D, et maintenant avec le générateur hybride PBR, le système permet de créer rapidement un grand nombre d'assets cohérents et détaillés. 
